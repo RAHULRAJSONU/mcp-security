@@ -1,0 +1,8 @@
+app:
+  security:
+    require-https: true
+
+logging:
+  structured:
+    format:
+      console: ecs

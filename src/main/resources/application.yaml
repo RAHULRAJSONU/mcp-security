@@ -1,0 +1,102 @@
+spring:
+  application:
+    name: mcp-security
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT:5432}/${POSTGRES_DB:patient_db}?sslmode=${POSTGRES_SSLMODE:verify-full}&ApplicationName=${spring.application.name}
+    username: ${DATABASE_USERNAME:healthcare_app}
+    password: ${DATABASE_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      connection-timeout: 3000
+      validation-timeout: 1000
+      max-lifetime: 1500000
+      leak-detection-threshold: 20000
+      data-source-properties:
+        socketTimeout: 10
+        connectTimeout: 3
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: ${FLYWAY_ENABLED:true}
+    # Migrations run as a privileged owner, never as the RLS-restricted app role.
+    user: ${FLYWAY_USER}
+    password: ${FLYWAY_PASSWORD}
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    validate-on-migrate: true
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${OIDC_ISSUER}
+
+  ai:
+    mcp:
+      server:
+        name: healthcare-mcp-server
+        version: 1.0.0
+        protocol: STREAMABLE
+        type: SYNC
+        annotation-scanner:
+          enabled: true
+
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+  # Honour X-Forwarded-* from the TLS-terminating proxy so HSTS and redirects are correct.
+  forward-headers-strategy: framework
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+    include-exception: false
+
+management:
+  # Metrics live on their own port so they are never routed through the public ingress.
+  server:
+    port: ${MANAGEMENT_PORT:8081}
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+app:
+  # Externally visible base URL of this server (RFC 9728 protected resource identifier).
+  public-url: ${APP_PUBLIC_URL}
+  security:
+    # Reject HTTP. The prod profile turns this on; local development leaves it off.
+    require-https: false
+    jwt:
+      audience: ${JWT_AUDIENCE:healthcare-mcp-server}
+      # Longest accepted access-token lifetime (exp - iat): the "automatic logoff" control.
+      max-lifetime: ${JWT_MAX_LIFETIME:PT15M}
+  oauth:
+    # Only used by the optional `oauth-demo` profile.
+    client-id: ${OAUTH_CLIENT_ID:healthcare-mcp-client}
+    client-secret: ${OAUTH_CLIENT_SECRET:}
+    redirect-uri: ${app.public-url}/oauth/callback
+
+logging:
+  level:
+    root: INFO
+    org.springframework.security: INFO
+    # Hibernate prints whole entities, including patient identifiers, when its debug
+    # logging is on. Pinned so that turning on DEBUG elsewhere cannot leak PHI.
+    org.hibernate: WARN

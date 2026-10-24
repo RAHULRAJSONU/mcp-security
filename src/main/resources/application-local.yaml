@@ -1,0 +1,17 @@
+# Developer machine only. Never activate this profile in a deployed environment.
+spring:
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:patient_db}?sslmode=${POSTGRES_SSLMODE:prefer}&ApplicationName=${spring.application.name}
+    password: ${DATABASE_PASSWORD:postgres}
+  flyway:
+    user: ${FLYWAY_USER:postgres}
+    password: ${FLYWAY_PASSWORD:postgres}
+    # Includes synthetic seed data, which must never be shipped to a real environment.
+    locations: classpath:db/migration,classpath:db/seed
+
+app:
+  public-url: ${APP_PUBLIC_URL:http://localhost:8080}
+
+logging:
+  level:
+    org.springframework.security: DEBUG

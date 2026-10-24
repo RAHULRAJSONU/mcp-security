@@ -1,0 +1,8 @@
+target/
+.git/
+.idea/
+.codex/
+mcp-security-scripts/
+**/.env
+**/.DS_Store
+HELP.md

@@ -1,0 +1,30 @@
+# Mutual TLS on the public listener: clients must present a certificate the
+# truststore accepts, and access tokens must be bound to that certificate
+# (RFC 8705). The management port stays plain HTTP on the internal network.
+#
+# Required: MTLS_KEYSTORE, MTLS_KEYSTORE_PASSWORD, MTLS_TRUSTSTORE, MTLS_TRUSTSTORE_PASSWORD
+# (keystore/truststore locations need a prefix such as file:/etc/tls/server.p12).
+server:
+  ssl:
+    bundle: mtls
+    client-auth: need
+
+spring:
+  ssl:
+    bundle:
+      jks:
+        mtls:
+          keystore:
+            location: ${MTLS_KEYSTORE}
+            password: ${MTLS_KEYSTORE_PASSWORD}
+            type: ${MTLS_KEYSTORE_TYPE:PKCS12}
+          truststore:
+            location: ${MTLS_TRUSTSTORE}
+            password: ${MTLS_TRUSTSTORE_PASSWORD}
+            type: ${MTLS_TRUSTSTORE_TYPE:PKCS12}
+
+app:
+  mtls:
+    enabled: true
+    # Reject tokens that carry no certificate binding. Set false only while migrating.
+    require-certificate-bound-tokens: ${MTLS_REQUIRE_BOUND_TOKENS:true}
