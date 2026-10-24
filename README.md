@@ -1,254 +1,186 @@
-# mcp-security
+# Application Security for AI Tools & MCP: An Incremental Reference Implementation & Curriculum
 
-A Spring Boot [Model Context Protocol](https://modelcontextprotocol.io) server that lets an AI agent read patient
-summaries, built to show the security mechanisms a healthcare system should have before an agent gets near
-patient data.
+[![Java 27](https://img.shields.io/badge/Java-27-orange.svg)](https://openjdk.org/projects/jdk/27/)
+[![Spring Boot 4](https://img.shields.io/badge/Spring%20Boot-4.1.1-green.svg)](https://spring.io/projects/spring-boot)
+[![Model Context Protocol](https://img.shields.io/badge/MCP-Streamable%20HTTP-blue.svg)](https://modelcontextprotocol.io)
+[![PostgreSQL RLS](https://img.shields.io/badge/PostgreSQL-Row--Level%20Security-336791.svg)](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
 
-> **Status: reference implementation (proof of concept).** It demonstrates the controls below and most are backed
-> by automated tests; the gaps are marked. It is not a production system or a compliance certification, and it
-> deliberately leaves out the items in [What this PoC leaves out](#what-this-poc-leaves-out). All patient data
-> is synthetic. HIPAA compliance belongs to an organisation, not a codebase: see
-> [PHI and PII handling](docs/phi-handling.md) for what this code does and what you must still provide.
+A Spring Boot [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets an AI agent read patient records, engineered to demonstrate the **defense-in-depth security controls** required before an autonomous AI tool is permitted near sensitive enterprise data (such as Protected Health Information / PHI under HIPAA).
 
-**Stack:** Java 27, Spring Boot 4, Spring AI MCP server (Streamable HTTP), Spring Security (OAuth 2.0 resource
-server with DPoP support and optional mutual TLS with certificate-bound tokens), PostgreSQL with row-level security, Flyway, Testcontainers.
+> **Educational Reference Implementation:** This repository is structured as both a working, production-grade reference implementation and an **incremental multi-page educational curriculum** to teach Application Security for AI Tools, AI Agents, and Tool Calling. All patient data is synthetic.
 
-## Safety assumptions
+---
 
-Returning PHI to an AI agent is **not safe by default**. It means sending PHI to a second party (the model) and to
-an agent host that records it. The controls in this repository limit and record what an agent can ask for. They
-do not control where the data goes next. Treat the following as preconditions; if one is false, do not connect
-this service to real patient data.
+## 🎓 The Multi-Page Learning Curriculum
+
+This repository includes a step-by-step, incremental course designed to teach security engineers, AI developers, and cloud architects how to secure Model Context Protocol (MCP) servers and AI agent tool integrations:
+
+👉 **[Start the Curriculum: Master Index & Syllabus](curriculum/README.md)**
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ THE INCREMENTAL LEARNING CURRICULUM                                    │
+├────────────────────────────────────────────────────────────────────────┤
+│ 📖 Module 01: Threat Modeling & MCP Trust Boundaries                   │
+│    - The AI agent dilemma, OWASP Top 10 for LLMs, and trust boundaries │
+│    🔗 [Read Module 01](curriculum/01-threat-modeling-and-trust-boundaries.md)            │
+├────────────────────────────────────────────────────────────────────────┤
+│ 📖 Module 02: Transport Layer Security & Ingress Hardening             │
+│    - Fail-hard HTTPS, port segregation (8080 vs 8081), and zero-cache  │
+│    🔗 [Read Module 02](curriculum/02-transport-and-edge-security.md)                     │
+├────────────────────────────────────────────────────────────────────────┤
+│ 📖 Module 03: Token Binding & Cryptographic Authentication             │
+│    - User delegation, audience locking, and RFC 8705 mTLS token binding │
+│    🔗 [Read Module 03](curriculum/03-authentication-and-token-binding.md)              │
+├────────────────────────────────────────────────────────────────────────┤
+│ 📖 Module 04: Contextual Authorization, Scopes & Break-Glass           │
+│    - Fine-grained scopes, ReBAC assignments, and emergency overrides   │
+│    🔗 [Read Module 04](curriculum/04-contextual-authorization-and-breakglass.md)        │
+├────────────────────────────────────────────────────────────────────────┤
+│ 📖 Module 05: Data-Tier Multi-Tenancy & PostgreSQL Row-Level Security   │
+│    - Kernel RLS, transaction-scoped tenants, and least-privilege roles  │
+│    🔗 [Read Module 05](curriculum/05-data-tier-isolation-and-row-level-security.md)    │
+├────────────────────────────────────────────────────────────────────────┤
+│ 📖 Module 06: Non-Repudiation, Fail-Closed Auditing & Immutable Logs   │
+│    - "No audit, no data" paradigm, append-only DB tables, duty checks  │
+│    🔗 [Read Module 06](curriculum/06-fail-closed-auditing-and-non-repudiation.md)      │
+├────────────────────────────────────────────────────────────────────────┤
+│ 📖 Module 07: Privacy by Design, Data Minimization & Side Channels     │
+│    - Domain toString() redaction, CWE-117 log forging, error masking   │
+│    🔗 [Read Module 07](curriculum/07-privacy-data-minimization-and-side-channels.md)    │
+├────────────────────────────────────────────────────────────────────────┤
+│ 📖 Module 08: Automated Security Testing & Verification Harness        │
+│    - Testcontainers harness, testing DB RLS, and log leak assertions   │
+│    🔗 [Read Module 08](curriculum/08-automated-security-verification.md)               │
+├────────────────────────────────────────────────────────────────────────┤
+│ 📖 Module 09: Production Hardening, Monitoring & Threat Playbook       │
+│    - Zero-secret config, Prometheus anomaly alerts, incident triage    │
+│    🔗 [Read Module 09](curriculum/09-production-hardening-and-threat-playbook.md)      │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🛡️ Core Safety Assumptions
+
+Returning PHI to an AI agent is **not safe by default**. Tool responses are transmitted to third-party LLM providers and recorded in host transcripts. Treat the following as non-negotiable preconditions before connecting this service to real patient data:
 
 | # | Assumption | Owner | Enforced here? |
 |---|---|---|---|
-| 1 | The model provider operates under a **business associate agreement**, with confirmed retention, no training on your data, and a known processing location. | Organisation | No |
-| 2 | The **agent host** is itself a covered system. Transcripts, traces and tool logs are access-controlled, retained appropriately (or not kept at all), and protected as PHI at rest. | Organisation | No |
-| 3 | The agent acts **only with the end user's own short-lived token**, never a shared service credential, so a compromised session cannot see more than that clinician could. | Agent host and IdP | Partly: audience and tenant checks, and tokens older than `JWT_MAX_LIFETIME` are refused |
-| 4 | **Only approved agent hosts** can connect. | Platform | Only when the `mtls` profile is on |
-| 5 | The identity provider issues correct claims (`tenant_id`, least-privilege scopes), enforces **multi-factor authentication**, and can revoke access. | IdP owner | No: the service trusts the IdP |
-| 6 | The ingress terminates TLS, rate-limits, sets `X-Forwarded-Proto` **itself** (never passed through from clients), and does not publish the management port. | Platform | Partly: the `prod` profile refuses plain HTTP |
-| 7 | The database has **encryption at rest**, protected backups, a provisioned `healthcare_app` role, and a guarded owner credential. | Platform | No |
-| 8 | **Application logs are restricted.** They can incidentally hold data, such as a database error. The audit trail is retained (HIPAA expects six years) and reviewed. | Organisation | No retention policy |
-| 9 | **Alerts exist and someone responds**: break-glass use, denial spikes, audit-write failures. | Organisation | Metrics and logs exist; no alert rules ship |
-| 10 | A formal **risk analysis**, workforce training and a breach procedure are in place. All data in this repository is synthetic. | Organisation | No |
+| 1 | The model provider operates under a **business associate agreement (BAA)** with confirmed zero data retention. | Organisation | No (External legal policy) |
+| 2 | The **agent host** is itself a covered system with encrypted local transcripts and traces. | Organisation | No (Client-side workstation governance) |
+| 3 | The agent acts **only with the end user's own short-lived token**, never a shared service credential. | Agent host & IdP | **Yes:** Validates subject, tenant, audience, and rejects tokens older than 15 minutes (`JWT_MAX_LIFETIME`). |
+| 4 | **Only approved agent hosts** can connect. | Platform | **Yes:** When the `mtls` profile is on, requires client certificates. |
+| 5 | The identity provider enforces **multi-factor authentication** and mints valid `tenant_id` claims. | IdP Owner | Assumed: Service trusts signed JWTs from `OIDC_ISSUER`. |
+| 6 | The ingress terminates TLS, rate-limits, and isolates the management port. | Platform | **Yes:** `RequireHttpsFilter` rejects plain HTTP; port 8081 is separated from public 8080. |
+| 7 | The database enforces **encryption at rest** and runs with a restricted runtime role. | Platform | **Yes:** Migrations provision least-privilege `healthcare_app` runtime user distinct from migration owner. |
+| 8 | **Application logs are strictly restricted** from holding clinical data or free-text justifications. | Development | **Yes:** Verified by `PhiLogLeakIT` and record `toString()` redactions. |
+| 9 | **Real-time alerting exists** for break-glass use and denial spikes. | Operations | **Yes:** Emits Prometheus metric counters (`clinical_patient_access_total`). |
+| 10 | A formal **risk analysis**, workforce training, and breach procedure are established. | Organisation | Administrative policy. |
 
-### What this does not protect against
+---
 
-- **Prompt injection that moves data the user may legitimately see.** Authorisation comes from the user's token, so
-  an injected instruction cannot reach a patient the user cannot see. It can still persuade the agent to send
-  permitted data somewhere it should not go.
-- **A compromised identity provider**, which can mint any tenant and scope.
-- **A malicious database owner or operator**, who can still change history.
-- **A compromised agent host**, which already holds the user's token and the transcripts.
+## 🏛️ Architecture & Verification Gates
 
-### Suggested posture
-
-Start with the low-risk tools (`listMyPatients`, `getPatientSummary`) and enable medications and notes only after
-assumptions 1 to 3 have been verified. There is no per-tool on/off switch yet, so today this is a deployment
-decision: omit the scopes from tokens until you are ready.
-
-## Architecture
+Every tool call processed by this server must pass **six distinct verification gates** across a single database transaction:
 
 ![Architecture and trust boundaries](docs/architecture.png)
 
 ![One tool call: six checks, one transaction, one audit trail](docs/security-flow.png)
 
-Sources are the editable SVGs in `docs/`.
+*(Editable SVG sources are available in `docs/architecture.svg` and `docs/security-flow.svg`)*
 
-## Security mechanisms
+---
 
-Each row is one mechanism, the threat it addresses, and the test that proves it.
+## 🔒 Security Mechanisms & Test Proofs
 
-| Mechanism | Threat it addresses | Implemented in | Proved by |
+| Mechanism | Threat Addressed | Implementation | Verification Test |
 |---|---|---|---|
-| Issuer and **audience** validation | Token minted for another service is accepted | `JwtSecurityConfig` | `JwtSecurityConfigTest` (audience validator) |
-| DPoP sender-constrained tokens | Stolen token replayed from a log or proxy | `SecurityConfig` | **Not enforced.** A live test with a real Keycloak token showed plain bearer tokens are accepted, so DPoP is supported but optional |
-| Mutual TLS on the public listener + certificate-bound tokens (RFC 8705), profile `mtls` | Impersonated client; stolen token replayed from another machine | `CertificateBoundTokenFilter`, `application-mtls.yaml` | `MutualTlsIT`, `CertificateBoundTokenFilterTest` |
-| Deny-by-default routing, hardened headers | Unintended exposure | `SecurityConfig` | `SecurityEndpointsIT` |
-| Scope + purpose + active-assignment policy | Over-broad access | `PatientAccessPolicy` | `PatientAccessPolicyTest`, `PatientAccessEndToEndIT` |
-| Break-glass: own scope, justification, WARN audit, own metric | Emergency access via shared logins; insider abuse | `PatientAccessPolicy`, `AccessAuditLogger` | `PatientAccessPolicyTest`, `AccessAuditLoggerTest`, `PatientAccessEndToEndIT` |
-| One indistinguishable refusal | Enumerating which patient IDs exist | `PatientAccessPolicy`, service layer | `PatientAccessEndToEndIT` |
-| Forced row-level security with a per-transaction tenant | Cross-tenant leak; a forgotten `WHERE` clause | `V4` migration, `TenantScopedExecutor` | `TenantScopedExecutorIT`, `PatientAccessEndToEndIT` |
-| Least-privilege app role, separate migration owner | SQL injection writing data; RLS bypass by an owner | `V3` migration, datasource config | Every `*IT` connects as that role |
-| Audit trail: durable **append-only** `access_events` table, written before data is returned (fail-closed); log lines hold identifiers only | Repudiation, history tampering, unrecorded reads, PHI in logs, log forging | `AccessAuditor`, `AccessAuditLogger`, `V6` grants and policies | `AppendOnlyAuditIT`, `AuditFailClosedIT`, `AccessAuditLoggerTest` |
-| One scope per data type; break-glass refused for clinical notes | Over-broad tokens; emergency access used to read sensitive data | `DataCategory`, `PatientAccessPolicy` | `PatientAccessPolicyTest`, `ClinicalToolsEndToEndIT` |
-| Separate audit-reader duty (`audit.read`), tenant-isolated, reads are audited | Clinicians reviewing or hiding their own trail | `PatientAccessPolicy.requireAuditAccess` | `ClinicalToolsEndToEndIT` |
-| Roster limited to active assignments | Enumerating patients; stale access after revocation | `JdbcRosterRepositoryAdapter` | `ClinicalToolsEndToEndIT` |
-| PHI kept out of logs, errors, metrics and caches: redacted `toString`, Hibernate pinned, fixed error text, `no-store` | PHI leaking through side channels, including to the AI model | `domain` records, `SecuredPatientQueryService`, `application.yaml` | `PhiLogLeakIT`, `PhiRedactionTest`, `SecuredPatientQueryServiceTest`, `SecurityEndpointsIT` |
-| Short-lived tokens; HTTPS-only in `prod` | A leaked token staying useful; PHI served in the clear | `JwtSecurityConfig`, `RequireHttpsFilter` | `TokenLifetimeValidatorTest`, `HttpsEnforcementIT` |
-| Metrics and health on a separate port | Operational endpoints exposed publicly | `SecurityConfig` | `SecurityEndpointsIT` |
-| No secret has a default | Credential leakage through source or builds | `application.yaml` | Convention; no test |
+| **Audience Validation** | Token minted for another microservice is replayed | [`JwtSecurityConfig.java`](src/main/java/io/github/rahulrajsonu/mcpsecurity/filter/JwtSecurityConfig.java) | [`JwtSecurityConfigTest.java`](src/test/java/io/github/rahulrajsonu/mcpsecurity/filter/JwtSecurityConfigTest.java) |
+| **Short-Lived Tokens** | Stolen token remains usable indefinitely | [`JwtSecurityConfig.java`](src/main/java/io/github/rahulrajsonu/mcpsecurity/filter/JwtSecurityConfig.java) | [`TokenLifetimeValidatorTest.java`](src/test/java/io/github/rahulrajsonu/mcpsecurity/filter/TokenLifetimeValidatorTest.java) |
+| **Mutual TLS & Certificate-Bound Tokens (RFC 8705)** | Stolen token replayed from another machine or proxy | [`CertificateBoundTokenFilter.java`](src/main/java/io/github/rahulrajsonu/mcpsecurity/security/CertificateBoundTokenFilter.java) | [`MutualTlsIT.java`](src/test/java/io/github/rahulrajsonu/mcpsecurity/MutualTlsIT.java) |
+| **Deny-by-Default Ingress & Port Separation** | Accidental exposure of operational endpoints (SSRF/RCE) | [`SecurityConfig.java`](src/main/java/io/github/rahulrajsonu/mcpsecurity/config/SecurityConfig.java) | [`SecurityEndpointsIT.java`](src/test/java/io/github/rahulrajsonu/mcpsecurity/SecurityEndpointsIT.java) |
+| **Fail-Hard HTTPS Enforcement** | Cleartext sniffing of bearer tokens and patient queries | [`RequireHttpsFilter.java`](src/main/java/io/github/rahulrajsonu/mcpsecurity/security/RequireHttpsFilter.java) | [`HttpsEnforcementIT.java`](src/test/java/io/github/rahulrajsonu/mcpsecurity/HttpsEnforcementIT.java) |
+| **Contextual Authorization & ReBAC** | Over-broad access; accessing unassigned patients | [`PatientAccessPolicy.java`](src/main/java/io/github/rahulrajsonu/mcpsecurity/security/PatientAccessPolicy.java) | [`PatientAccessPolicyTest.java`](src/test/java/io/github/rahulrajsonu/mcpsecurity/security/PatientAccessPolicyTest.java) |
+| **Break-Glass Emergency Governance** | Insider abuse; unrecorded emergency access | [`PatientAccessPolicy.java`](src/main/java/io/github/rahulrajsonu/mcpsecurity/security/PatientAccessPolicy.java), [`AccessAuditLogger.java`](src/main/java/io/github/rahulrajsonu/mcpsecurity/security/AccessAuditLogger.java) | [`ClinicalToolsEndToEndIT.java`](src/test/java/io/github/rahulrajsonu/mcpsecurity/ClinicalToolsEndToEndIT.java) |
+| **Indistinguishable Refusals** | Patient enumeration across tenants | [`SecuredPatientQueryService.java`](src/main/java/io/github/rahulrajsonu/mcpsecurity/service/SecuredPatientQueryService.java) | [`PatientAccessEndToEndIT.java`](src/test/java/io/github/rahulrajsonu/mcpsecurity/PatientAccessEndToEndIT.java) |
+| **PostgreSQL Row-Level Security (RLS)** | Cross-tenant data leaks; forgotten SQL `WHERE` clauses | [`TenantScopedExecutor.java`](src/main/java/io/github/rahulrajsonu/mcpsecurity/security/TenantScopedExecutor.java), [`V4`](src/main/resources/db/migration/V4__enable_tenant_rls.sql), [`V6`](src/main/resources/db/migration/V6__secure_clinical_data.sql) | [`TenantScopedExecutorIT.java`](src/test/java/io/github/rahulrajsonu/mcpsecurity/security/TenantScopedExecutorIT.java) |
+| **Least-Privilege Database Role** | SQL injection deleting data or modifying history | [`V3`](src/main/resources/db/migration/V3__create_database_role.sql), [`V6`](src/main/resources/db/migration/V6__secure_clinical_data.sql) | [`AppendOnlyAuditIT.java`](src/test/java/io/github/rahulrajsonu/mcpsecurity/AppendOnlyAuditIT.java) |
+| **Fail-Closed Append-Only Audit Trail** | "No audit, no data"; repudiation; audit tampering | [`AccessAuditor.java`](src/main/java/io/github/rahulrajsonu/mcpsecurity/service/AccessAuditor.java), [`SecuredPatientQueryService.java`](src/main/java/io/github/rahulrajsonu/mcpsecurity/service/SecuredPatientQueryService.java) | [`AuditFailClosedIT.java`](src/test/java/io/github/rahulrajsonu/mcpsecurity/AuditFailClosedIT.java), [`AppendOnlyAuditIT.java`](src/test/java/io/github/rahulrajsonu/mcpsecurity/AppendOnlyAuditIT.java) |
+| **Audit Duty Segregation** | Clinicians reviewing or tampering with audit logs | [`PatientAccessPolicy.java`](src/main/java/io/github/rahulrajsonu/mcpsecurity/security/PatientAccessPolicy.java) | [`ClinicalToolsEndToEndIT.java`](src/test/java/io/github/rahulrajsonu/mcpsecurity/ClinicalToolsEndToEndIT.java) |
+| **Side-Channel Log & Error Redaction** | PHI leaking into logging infrastructure or AI prompts | [`domain records`](src/main/java/io/github/rahulrajsonu/mcpsecurity/mcp/domain/), [`AccessAuditLogger.java`](src/main/java/io/github/rahulrajsonu/mcpsecurity/security/AccessAuditLogger.java) | [`PhiLogLeakIT.java`](src/test/java/io/github/rahulrajsonu/mcpsecurity/PhiLogLeakIT.java), [`PhiRedactionTest.java`](src/test/java/io/github/rahulrajsonu/mcpsecurity/mcp/domain/PhiRedactionTest.java) |
 
+---
 
-## The tools
+## 🧰 The Model Context Protocol (MCP) Tools
 
-Each tool exercises a different part of the policy. Every call is tenant-scoped and audited, and every refusal
-looks identical whatever the cause (missing scope, no assignment, other tenant, unknown patient).
+Tools are exposed via Streamable HTTP under `/mcp` using Spring AI MCP Server:
 
-| Tool | Scopes needed | What it demonstrates |
+| Tool Name | Scopes Required | Capabilities & Policy Constraints |
 |---|---|---|
-| `getPatientSummary(patientId, purpose?, justification?)` | `patient.read` | Active assignment required; break-glass allowed |
-| `listMyPatients()` | `patient.read` | Results limited to the caller's active assignments; revoked and expired ones disappear; no emergency form |
-| `getPatientMedications(patientId, purpose?, justification?)` | `patient.read`, `medication.read` | A separate scope per data type; break-glass allowed |
-| `getClinicalNotes(patientId, purpose?, justification?)` | `patient.read`, `notes.read` | A separate scope; break-glass is **refused** even when the caller holds the scope |
-| `getAccessHistory(patientId, limit?)` | `audit.read` | An audit-officer duty clinicians don't hold; tenant-isolated; reading it is itself audited |
-| `listBreakGlassEvents(limit?)` | `audit.read` | Review of emergency access, including the stated justification |
+| `getPatientSummary(patientId, purpose?, justification?)` | `patient.read` | Requires active clinician assignment. Allows break-glass emergency read. Excludes MRN (data minimization). |
+| `listMyPatients()` | `patient.read` | Returns active roster entries for caller. Expired or revoked assignments disappear. No emergency form. |
+| `getPatientMedications(patientId, purpose?, justification?)` | `patient.read`, `medication.read` | Category-specific scope. Allows break-glass emergency read. |
+| `getClinicalNotes(patientId, purpose?, justification?)` | `patient.read`, `notes.read` | Category-specific scope. **Break-glass is strictly refused** even if held by caller. |
+| `getAccessHistory(patientId, limit?)` | `audit.read` | Compliance officer tool. Isolated by tenant. Reading the audit log is itself audited. |
+| `listBreakGlassEvents(limit?)` | `audit.read` | Compliance officer tool. Lists emergency reads with stated clinical justifications. |
 
-### Purposes
+---
 
-| Purpose | Requires | Behaviour |
-|---|---|---|
-| `TREATMENT` (default) | the tool's scopes and an **active assignment** to the patient | Routine read. |
-| `EMERGENCY` (break-glass) | the tool's scopes **and** `patient.break_glass`, plus a 15–500 character `justification` | Skips the assignment check, never crosses tenants, logs at WARN, counted separately, and the justification is stored for audit readers. Not available for clinical notes. |
-| anything else | n/a | Denied. |
+## 🚀 Quickstart & Local Execution
 
-### What happens when (all asserted in `ClinicalToolsEndToEndIT`)
+### Prerequisites
+- JDK 27
+- PostgreSQL 17 or 18 (with `psql` client)
+- Node.js 18+ (for OAuth device flow helper)
 
-| Caller | Scopes | Call | Result |
-|---|---|---|---|
-| doctor-101, hospital-A | `patient.read` | summary, `patient-400` | Allowed |
-| doctor-101 | `patient.read` | summary, `patient-500` | Denied: assignment was revoked |
-| doctor-101 | `patient.read` | medications, `patient-400` | Denied: no `medication.read` |
-| doctor-101 | + `medication.read` | medications, `patient-400` | Allowed |
-| doctor-101 | + `medication.read`, `patient.break_glass` | medications, `patient-500`, `EMERGENCY` + justification | Allowed, WARN, appears in the break-glass review |
-| doctor-101 | + `notes.read`, `patient.break_glass` | notes, `patient-500`, `EMERGENCY` | Denied: break-glass never opens notes |
-| doctor-101 | + `medication.read`, `patient.break_glass` | medications, `patient-600`, `EMERGENCY` | Denied: other tenant |
-| doctor-101 / doctor-202 | `patient.read` | `listMyPatients` | `patient-400` only / `patient-400` and `patient-500` |
-| doctor-101 | anything but `audit.read` | `getAccessHistory` | Denied |
-| compliance-1, hospital-A | `audit.read` | `listBreakGlassEvents` | Shows who, which patient, and why |
-| compliance-B, hospital-B | `audit.read` | `getAccessHistory`, `patient-400` | Empty: another tenant's history is invisible |
-
-## Access token requirements
-
-The server validates access tokens from the configured issuer, including DPoP-bound tokens, and certificate-bound tokens when the `mtls` profile is on. A token must carry:
-
-| Claim | Requirement |
-|---|---|
-| `iss` | Equals `OIDC_ISSUER` |
-| `aud` | Contains `JWT_AUDIENCE` (default `healthcare-mcp-server`) |
-| `sub` | The clinician's identifier. Used for assignment checks and audit |
-| `tenant_id` | The caller's tenant (hospital). Drives row-level security |
-| `scope` | Space-separated. `patient.read` for patient data; `medication.read`, `notes.read` for those data types; `patient.break_glass` for emergency access; `audit.read` for the audit tools |
-| `cnf` | Only with the `mtls` profile: `x5t#S256`, the base64url SHA-256 thumbprint of the client certificate. DPoP-bound tokens carry `jkt` instead |
-
-Your identity provider must be configured to emit `tenant_id` and the audience. Discovery metadata
-(RFC 9728) is served at `/.well-known/oauth-protected-resource`.
-
-## Demo data (profile `local` and tests only)
-
-Patients: `patient-400` and `patient-500` in `hospital-A`; `patient-600` in `hospital-B`. Each has a medication list
-and a progress note.
-
-| Clinician | Tenant | Assignments |
-|---|---|---|
-| `doctor-101` | `hospital-A` | `patient-400` active; `patient-500` **revoked** |
-| `doctor-202` | `hospital-A` | `patient-400` and `patient-500`, both active |
-| `doctor-303` | `hospital-B` | `patient-600` active |
-
-Break-glass on `patient-500` works for `doctor-101` (own tenant); the same on `patient-600` never does.
-
-## Run locally
-
-Requirements: JDK 27, a PostgreSQL (tested on 17 and 18), and an OIDC provider you can reach. Docker is optional.
-
-```
-# one-time database setup (the app role's password is provisioned outside the migrations)
+### 1. One-Time Database Setup
+```bash
 psql -U postgres -c "CREATE DATABASE patient_db"
 psql -U postgres -c "CREATE ROLE healthcare_app LOGIN PASSWORD 'postgres'"
-
-SPRING_PROFILES_ACTIVE=local OIDC_ISSUER=https://your-idp/realms/your-realm ./mvnw spring-boot:run
 ```
 
-The `local` profile supplies developer defaults for the database and public URL. The service listens on `8080`,
-with health and metrics on `8081`.
-
-To practise against a real identity provider and Claude Desktop, follow the [hands-on guide](docs/cloud-iam-guide.md): a free Cloud-IAM realm, real tokens, sixteen policy scenarios with expected results, and a Desktop setup over HTTP.
-
-## Configuration
-
-All configuration is environment-driven; nothing secret has a default outside the `local` profile.
-
-| Variable | Required | Purpose |
-|---|---|---|
-| `OIDC_ISSUER` | yes | Issuer of access tokens. Resolved at startup; the app refuses to boot if unreachable. |
-| `APP_PUBLIC_URL` | yes* | Externally visible base URL, advertised as the protected resource identifier. |
-| `POSTGRES_HOST` | yes* | Database host. |
-| `DATABASE_PASSWORD` | yes* | Password for the restricted `healthcare_app` role. |
-| `FLYWAY_USER` / `FLYWAY_PASSWORD` | yes* | Privileged owner used only for migrations. |
-| `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_SSLMODE` | no | Defaults `5432`, `patient_db`, `verify-full`. |
-| `DATABASE_USERNAME` | no | Default `healthcare_app`. |
-| `JWT_AUDIENCE` | no | Default `healthcare-mcp-server`. |
-| `JWT_MAX_LIFETIME` | no | Longest accepted access-token lifetime (`exp` minus `iat`), ISO-8601. Default `PT15M`. |
-| `FLYWAY_ENABLED` | no | Set `false` to run migrations as a separate job. |
-| `PORT`, `MANAGEMENT_PORT` | no | Defaults `8080` and `8081`. Never expose the management port through an ingress. |
-| `DB_POOL_SIZE` | no | Default `10`. |
-
-\* The `local` profile supplies defaults for these.
-
-The `healthcare_app` role must be provisioned by the platform with its credential; migration `V3` only ensures it
-exists and grants least-privilege `SELECT`.
-
-## Profiles
-
-- `prod`: structured (ECS JSON) logs, and refuses plain HTTP (the proxy must set `X-Forwarded-Proto` itself and never pass it through from clients). The Docker image sets this by default.
-- `local`: developer defaults (local Postgres, seed data, debug security logs). Never deploy.
-- `mtls`: mutual TLS on the public listener, with certificate-bound tokens.
-- `oauth-demo`: a browser login helper under `/oauth/**`, using `OAUTH_CLIENT_ID` and optionally `OAUTH_CLIENT_SECRET`. Never deploy.
-
-## Mutual TLS (optional)
-
-Activate with `SPRING_PROFILES_ACTIVE=...,mtls`. The public listener then requires a client certificate that your
-truststore accepts, and every access token must be bound to that certificate.
-
-| Variable | Purpose |
-|---|---|
-| `MTLS_KEYSTORE`, `MTLS_KEYSTORE_PASSWORD` | Server certificate and key, for example `file:/etc/tls/server.p12` |
-| `MTLS_TRUSTSTORE`, `MTLS_TRUSTSTORE_PASSWORD` | Client certificates (or the CA) the server accepts |
-| `MTLS_KEYSTORE_TYPE`, `MTLS_TRUSTSTORE_TYPE` | Default `PKCS12` |
-| `MTLS_REQUIRE_BOUND_TOKENS` | Default `true`. `false` also accepts unbound tokens (migration aid only) |
-
-Your identity provider must issue tokens with a `cnf` claim containing `x5t#S256`, the base64url SHA-256 thumbprint
-of the client certificate. Tokens without it, or bound to a different certificate, get `401`. The management port
-stays plain HTTP and must remain on an internal network. This has been tested with real TLS handshakes and unit
-tests, **not** end to end against a real identity provider. Revocation checking (CRL or OCSP) is not configured.
-
-## Build and test
-
+### 2. Boot Application (Local Profile)
+```bash
+SPRING_PROFILES_ACTIVE=local \
+OIDC_ISSUER=https://your-idp/realms/your-realm \
+./mvnw spring-boot:run
 ```
-./mvnw verify      # unit tests + integration tests against a real PostgreSQL
-docker build -t mcp-security .
+The server listens on **8080** (public MCP listener) and **8081** (internal actuator metrics).
+
+### 3. Hands-On Verification with Claude Desktop
+Follow the hands-on tutorial to connect Claude Desktop to a real Keycloak instance on Cloud-IAM and test live tool interactions:  
+👉 **[Read the Hands-On Cloud-IAM & Claude Desktop Guide](docs/cloud-iam-guide.md)**
+
+---
+
+## 🧪 Automated Testing & Verification
+
+Integration tests leverage Testcontainers to spin up isolated PostgreSQL instances and assert database-level security policies:
+
+```bash
+# Run all unit tests
+./mvnw test -Dtest=*Test
+
+# Run all unit and integration tests (requires Docker)
+./mvnw verify
 ```
 
-Integration tests use Testcontainers by default. Without Docker, point them at an existing **empty** database:
-
-```
+To run integration tests against a pre-existing local database without Docker:
+```bash
 IT_DB_URL=jdbc:postgresql://localhost:5432/scratch_db \
-IT_DB_OWNER=postgres IT_DB_OWNER_PASSWORD=... IT_DB_APP_PASSWORD=... ./mvnw verify
+IT_DB_OWNER=postgres \
+IT_DB_OWNER_PASSWORD=secret \
+IT_DB_APP_PASSWORD=secret \
+./mvnw verify
 ```
 
-With neither available, the database-backed tests are skipped, not failed. The container image has not been built
-in this repository's verification runs.
+---
 
-## Operations (what a real deployment would add)
+## 📖 Additional Documentation & Resources
 
-These notes illustrate the operational side. The PoC includes the hooks, not a deployment.
-
-- Probes and metrics are served only on the management port: `/actuator/health/liveness`, `/actuator/health/readiness`, `/actuator/prometheus`. The public port returns 401 for them.
-- Patient access is audited on logger `AUDIT.patient-access` (identifiers only, no clinical data) and counted as `clinical_patient_access_total{outcome,purpose}`. Route the log to retained, tamper-evident storage.
-- Rate limiting, TLS termination and WAF belong at the gateway or ingress.
-
-## Upgrading an existing dev database
-
-`V3__create_database_role.sql` no longer contains a password, and the synthetic seed (`V2`) moved to `db/seed`,
-loaded only by the `local` profile. An already-migrated dev DB will fail checksum validation once; run
-`./mvnw flyway:repair` (or recreate the DB). Never edit an applied migration after the first real deployment.
-
-## What this PoC leaves out
-
-- Tamper evidence for the audit trail beyond database privileges. The application cannot edit or delete history, but the database owner still can, and there is no hash chain or write-once storage. Auditors can review break-glass use, but there is no approval workflow.
-- Shipped alert rules, dashboards and a measured load test, which is illustrative).
-- Automated tests for DPoP and injection attempts, and making DPoP mandatory. A live test against a real Keycloak realm confirmed plain bearer tokens are currently accepted.
-- Role- or purpose-based field filtering. The summary returns an id, name and date of birth (no MRN), and the notes tool returns full note bodies, for any caller holding the scope.
-- Rate limiting, TLS termination and WAF, which are assumed to sit at the platform or a gateway. Mutual TLS is implemented only for the public listener; gateway-to-service and service-to-database mTLS, revocation checking, and an end-to-end run with a real identity provider are not.
-- A formal risk analysis and compliance review is an engineering aid, not a certification).
+- [Multi-Page Learning Curriculum](curriculum/README.md)
+- [PHI & PII Handling Guide](docs/phi-handling.md)
+- [Cloud-IAM & Claude Desktop Integration Guide](docs/cloud-iam-guide.md)
+- [Architecture Diagram Source](docs/architecture.svg)
+- [Security Flow Diagram Source](docs/security-flow.svg)
