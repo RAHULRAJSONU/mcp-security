@@ -191,7 +191,7 @@ exists and grants least-privilege `SELECT`.
 
 - `prod`: structured (ECS JSON) logs, and refuses plain HTTP (the proxy must set `X-Forwarded-Proto` itself and never pass it through from clients). The Docker image sets this by default.
 - `local`: developer defaults (local Postgres, seed data, debug security logs). Never deploy.
-- `mtls`: mutual TLS on the public listener, with certificate-bound tokens. See [Mutual TLS](#mutual-tls-optional).
+- `mtls`: mutual TLS on the public listener, with certificate-bound tokens.
 - `oauth-demo`: a browser login helper under `/oauth/**`, using `OAUTH_CLIENT_ID` and optionally `OAUTH_CLIENT_SECRET`. Never deploy.
 
 ## Mutual TLS (optional)
@@ -248,5 +248,5 @@ loaded only by the `local` profile. An already-migrated dev DB will fail checksu
 - Shipped alert rules, dashboards and a measured load test, which is illustrative).
 - Automated tests for DPoP and injection attempts, and a check that plain bearer tokens are or aren't accepted as intended.
 - Role- or purpose-based field filtering. The summary returns an id, name and date of birth (no MRN), and the notes tool returns full note bodies, for any caller holding the scope.
-- Rate limiting, TLS termination and WAF, which are assumed to sit at the platform or a gateway. Mutual TLS is implemented only for the public listener; gateway-to-service and service-to-database mTLS, revocation checking, and an end-to-end run with a real identity provider are not ([ADR-8](docs/decisions.md)).
+- Rate limiting, TLS termination and WAF, which are assumed to sit at the platform or a gateway. Mutual TLS is implemented only for the public listener; gateway-to-service and service-to-database mTLS, revocation checking, and an end-to-end run with a real identity provider are not.
 - A formal risk analysis and compliance review is an engineering aid, not a certification).
