@@ -52,7 +52,7 @@ decision: omit the scopes from tokens until you are ready.
 
 ![Architecture and trust boundaries](docs/architecture.png)
 
-![Request security flow](docs/security-flow.png)
+![One tool call: six checks, one transaction, one audit trail](docs/security-flow.png)
 
 Sources are the editable SVGs in `docs/`.
 

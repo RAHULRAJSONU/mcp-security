@@ -1,114 +1,226 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 980" width="1600" height="980" font-family="Segoe UI, Helvetica, Arial, sans-serif">
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#475569"/></marker>
+    <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#dc2626"/></marker>
     <style>
-      .t{font-size:15px;fill:#0f172a;font-weight:600}
+      .h{font-size:24px;font-weight:700;fill:#0f172a}
+      .sub{font-size:14px;fill:#475569}
+      .z{font-size:14px;font-weight:700;fill:#334155;letter-spacing:.3px}
+      .t{font-size:15px;font-weight:600;fill:#0f172a}
       .s{font-size:12.5px;fill:#475569}
-      .h{font-size:20px;font-weight:700;fill:#0f172a}
-      .box{fill:#f8fafc;stroke:#94a3b8;stroke-width:1.5}
-      .app{fill:#eff6ff;stroke:#3b82f6;stroke-width:1.5}
-      .sec{fill:#fef3c7;stroke:#d97706;stroke-width:1.5}
-      .db{fill:#dcfce7;stroke:#16a34a;stroke-width:1.5}
-      .ln{stroke:#475569;stroke-width:1.6;fill:none}
-      .bd{fill:#d97706}
+      .l{font-size:12.5px;fill:#334155;font-weight:600}
+      .zone{fill:#f8fafc;stroke:#cbd5e1;stroke-width:1.5}
+      .zsvc{fill:#f6faff;stroke:#3b82f6;stroke-width:2;stroke-dasharray:8 5}
+      .zdb{fill:#f3fbf5;stroke:#16a34a;stroke-width:2}
+      .zid{fill:#faf7ff;stroke:#8b5cf6;stroke-width:1.5}
+      .box{fill:#ffffff;stroke:#94a3b8;stroke-width:1.4}
+      .code{fill:#fef3c7;stroke:#d97706;stroke-width:1.6}
+      .std{fill:#eff6ff;stroke:#3b82f6;stroke-width:1.4}
+      .dbx{fill:#dcfce7;stroke:#16a34a;stroke-width:1.6}
+      .plat{fill:#f1f5f9;stroke:#64748b;stroke-width:1.4;stroke-dasharray:5 4}
+      .phi{fill:#fef2f2;stroke:#dc2626;stroke-width:1.6;stroke-dasharray:6 4}
+      .ln{stroke:#475569;stroke-width:1.7;fill:none}
+      .lr{stroke:#dc2626;stroke-width:1.9;fill:none;stroke-dasharray:6 4}
+      .ld{stroke:#64748b;stroke-width:1.5;fill:none;stroke-dasharray:5 4}
+      .bd{fill:#0f172a}
       .bn{font-size:12px;font-weight:700;fill:#fff;text-anchor:middle}
     </style>
   </defs>
-  <rect width="1200" height="800" fill="#ffffff"/>
-  <text x="40" y="44" class="h">mcp-security: architecture and trust boundaries</text>
+  <rect width="1600" height="980" fill="#ffffff"/>
 
-  <rect x="40" y="290" width="150" height="80" rx="10" class="box"/>
-  <text x="115" y="325" class="t" text-anchor="middle">AI agent</text>
-  <text x="115" y="345" class="s" text-anchor="middle">MCP client</text>
-  <rect x="230" y="290" width="160" height="80" rx="10" class="box"/>
-  <text x="310" y="320" class="t" text-anchor="middle">Ingress / gateway</text>
-  <text x="310" y="340" class="s" text-anchor="middle">TLS / mTLS · rate limit</text>
-  <text x="310" y="356" class="s" text-anchor="middle">WAF · outside this repo</text>
-  <path d="M190 330H228" class="ln" marker-end="url(#a)"/>
-  <text x="115" y="272" class="s" text-anchor="middle">Token + DPoP / client cert</text>
+  <text x="30" y="38" class="h">mcp-security: trust zones, control points and failure behaviour</text>
+  <text x="30" y="62" class="sub">Follow the numbers for one tool call: 1 sign in · 2 call with bearer token · 3 validate · 4 parse input · 5 decide · 6 scope to tenant · 7 query as app role · 8 record audit</text>
 
-  <rect x="40" y="560" width="150" height="70" rx="10" class="box"/>
-  <text x="115" y="587" class="t" text-anchor="middle">Orchestrator</text>
-  <text x="115" y="605" class="s" text-anchor="middle">+ Prometheus</text>
-  <text x="115" y="620" class="s" text-anchor="middle">health · metrics</text>
-  <path d="M190 595H438" class="ln" stroke-dasharray="5 4" marker-end="url(#a)"/>
-  <text x="314" y="586" class="s" text-anchor="middle">:8081 management port</text>
-  <text x="310" y="390" class="s" text-anchor="middle">public port :8080</text>
+  <!-- ================= CALLER SIDE ================= -->
+  <rect x="30" y="90" width="300" height="570" rx="14" class="zone"/>
+  <text x="46" y="114" class="z">CALLER SIDE · NOT CONTROLLED HERE</text>
 
-  <rect x="440" y="70" width="410" height="640" rx="14" fill="#f8fbff" stroke="#3b82f6" stroke-width="2" stroke-dasharray="7 5"/>
-  <text x="460" y="100" class="t">mcp-security (Spring Boot, stateless)</text>
+  <rect x="50" y="130" width="260" height="56" rx="10" class="box"/>
+  <text x="180" y="154" class="t" text-anchor="middle">Clinician</text>
+  <text x="180" y="173" class="s" text-anchor="middle">signs in at the IdP (MFA expected)</text>
 
-  <rect x="470" y="130" width="350" height="56" rx="8" class="sec"/>
-  <text x="645" y="154" class="t" text-anchor="middle">Security filter chain · optional mTLS</text>
-  <text x="645" y="173" class="s" text-anchor="middle">JWT · DPoP or cert-bound tokens · deny by default</text>
+  <rect x="50" y="232" width="260" height="124" rx="10" class="plat"/>
+  <text x="180" y="258" class="t" text-anchor="middle">Agent host (MCP client)</text>
+  <text x="180" y="278" class="s" text-anchor="middle">holds the user's own short-lived token</text>
+  <text x="180" y="296" class="s" text-anchor="middle">transcripts and tool logs are PHI at rest</text>
+  <text x="180" y="314" class="s" text-anchor="middle">must be an approved host (optional mTLS)</text>
+  <text x="180" y="338" class="l" text-anchor="middle">covered system, needs hardening</text>
 
-  <rect x="470" y="210" width="350" height="56" rx="8" class="app"/>
-  <text x="645" y="234" class="t" text-anchor="middle">MCP endpoint /mcp</text>
-  <text x="645" y="253" class="s" text-anchor="middle">6 tools: summary · roster · meds · notes · audit</text>
+  <rect x="50" y="440" width="260" height="96" rx="10" class="phi"/>
+  <text x="180" y="466" class="t" text-anchor="middle">Model provider</text>
+  <text x="180" y="486" class="s" text-anchor="middle">sees every tool result in its context</text>
+  <text x="180" y="504" class="s" text-anchor="middle">needs a BAA, retention and training</text>
+  <text x="180" y="522" class="s" text-anchor="middle">terms confirmed. No code can fix this.</text>
 
-  <rect x="470" y="290" width="350" height="56" rx="8" class="app"/>
-  <text x="645" y="314" class="t" text-anchor="middle">ClinicalPrincipalResolver</text>
-  <text x="645" y="333" class="s" text-anchor="middle">subject · tenant_id · scopes from the token</text>
+  <path d="M180 186V230" class="ln" marker-end="url(#a)"/>
+  <text x="190" y="214" class="s">prompt</text>
+  <path d="M180 356V438" class="lr" marker-start="url(#r)" marker-end="url(#r)"/>
+  <text x="192" y="402" class="l" fill="#dc2626" style="fill:#dc2626">PHI in the model's context</text>
 
-  <rect x="470" y="370" width="350" height="56" rx="8" class="app"/>
-  <text x="645" y="394" class="t" text-anchor="middle">SecuredPatientQueryService</text>
-  <text x="645" y="413" class="s" text-anchor="middle">orchestrates the call · emits audit event</text>
+  <text x="46" y="582" class="s">The service cannot see or limit anything past this</text>
+  <text x="46" y="600" class="s">line. It can only limit what an agent is able to</text>
+  <text x="46" y="618" class="s">ask for, and record that it asked.</text>
 
-  <rect x="470" y="450" width="350" height="56" rx="8" class="sec"/>
-  <text x="645" y="474" class="t" text-anchor="middle">TenantScopedExecutor</text>
-  <text x="645" y="493" class="s" text-anchor="middle">new txn · set_config('app.tenant_id', …, true)</text>
+  <!-- ================= IDENTITY ================= -->
+  <rect x="370" y="90" width="660" height="150" rx="14" class="zid"/>
+  <text x="386" y="114" class="z">IDENTITY PLANE · OIDC PROVIDER (EXTERNAL)</text>
+  <rect x="386" y="128" width="190" height="96" rx="10" class="plat"/>
+  <text x="481" y="154" class="t" text-anchor="middle">Sign-in</text>
+  <text x="481" y="174" class="s" text-anchor="middle">auth code + PKCE or</text>
+  <text x="481" y="190" class="s" text-anchor="middle">device grant · MFA</text>
+  <text x="481" y="208" class="s" text-anchor="middle">scopes chosen per sign-in</text>
+  <rect x="592" y="128" width="226" height="96" rx="10" class="plat"/>
+  <text x="705" y="154" class="t" text-anchor="middle">Token endpoint</text>
+  <text x="705" y="174" class="s" text-anchor="middle">JWT: sub · tenant_id · scope</text>
+  <text x="705" y="190" class="s" text-anchor="middle">aud = healthcare-mcp-server</text>
+  <text x="705" y="208" class="s" text-anchor="middle">short lifetime (default ≤ 15 min)</text>
+  <rect x="834" y="128" width="180" height="96" rx="10" class="plat"/>
+  <text x="924" y="154" class="t" text-anchor="middle">Discovery + JWKS</text>
+  <text x="924" y="174" class="s" text-anchor="middle">signing keys, metadata</text>
+  <text x="924" y="190" class="s" text-anchor="middle">fetched at startup:</text>
+  <text x="924" y="208" class="s" text-anchor="middle">unreachable = no boot</text>
 
-  <rect x="470" y="530" width="350" height="56" rx="8" class="sec"/>
-  <text x="645" y="554" class="t" text-anchor="middle">PatientAccessPolicy</text>
-  <text x="645" y="573" class="s" text-anchor="middle">treatment: assignment · emergency: break-glass</text>
+  <!-- sign in path -->
+  <path d="M310 270H350V176H384" class="ln" marker-end="url(#a)"/>
+  <circle cx="350" cy="223" r="11" class="bd"/><text x="350" y="227.5" class="bn">1</text>
 
-  <rect x="470" y="610" width="350" height="56" rx="8" class="app"/>
-  <text x="645" y="634" class="t" text-anchor="middle">JPA repositories</text>
-  <text x="645" y="653" class="s" text-anchor="middle">reads · append-only audit writes</text>
+  <!-- ================= EDGE ================= -->
+  <rect x="370" y="290" width="170" height="250" rx="14" class="plat"/>
+  <text x="385" y="314" class="z">EDGE · PLATFORM</text>
+  <text x="385" y="344" class="t">Ingress</text>
+  <text x="385" y="366" class="s">TLS termination</text>
+  <text x="385" y="384" class="s">sets X-Forwarded-Proto</text>
+  <text x="385" y="402" class="s">itself, never passes</text>
+  <text x="385" y="420" class="s">the client's value</text>
+  <text x="385" y="446" class="s">optional mutual TLS</text>
+  <text x="385" y="464" class="s">rate limit · WAF</text>
+  <text x="385" y="490" class="l">not in this repo</text>
+  <text x="385" y="508" class="l">management port</text>
+  <text x="385" y="524" class="l">never routed here</text>
+
+  <path d="M310 300H368" class="ln" marker-end="url(#a)"/>
+  <circle cx="339" cy="300" r="11" class="bd"/><text x="339" y="304.5" class="bn">2</text>
+
+  <!-- ================= SERVICE ================= -->
+  <rect x="570" y="270" width="480" height="700" rx="14" class="zsvc"/>
+  <text x="586" y="294" class="z">SERVICE · STATELESS · THIS REPO</text>
+
+  <rect x="590" y="308" width="440" height="84" rx="8" class="code"/>
+  <text x="810" y="332" class="t" text-anchor="middle">Filter chain · deny by default</text>
+  <text x="810" y="352" class="s" text-anchor="middle">HTTPS required in prod · signature · issuer · audience</text>
+  <text x="810" y="369" class="s" text-anchor="middle">token lifetime limit · certificate-bound check (mtls profile)</text>
+  <text x="810" y="385" class="s" text-anchor="middle">DPoP is accepted but not required (open item)</text>
+
+  <rect x="590" y="412" width="440" height="58" rx="8" class="std"/>
+  <text x="810" y="436" class="t" text-anchor="middle">MCP tools (6) · /mcp</text>
+  <text x="810" y="455" class="s" text-anchor="middle">model-supplied parameters are untrusted: purpose is a closed list</text>
+
+  <rect x="590" y="490" width="440" height="58" rx="8" class="std"/>
+  <text x="810" y="514" class="t" text-anchor="middle">Principal resolver</text>
+  <text x="810" y="533" class="s" text-anchor="middle">identity, tenant and scopes come only from the token</text>
+
+  <rect x="590" y="568" width="440" height="96" rx="8" class="code"/>
+  <text x="810" y="592" class="t" text-anchor="middle">Access policy</text>
+  <text x="810" y="612" class="s" text-anchor="middle">scope per data type → purpose → active assignment</text>
+  <text x="810" y="629" class="s" text-anchor="middle">emergency: own scope + justification, never notes,</text>
+  <text x="810" y="646" class="s" text-anchor="middle">never across tenants · every denial looks identical</text>
+
+  <rect x="590" y="684" width="440" height="62" rx="8" class="code"/>
+  <text x="810" y="708" class="t" text-anchor="middle">Tenant-scoped transaction</text>
+  <text x="810" y="727" class="s" text-anchor="middle">set_config('app.tenant_id', …, true) · refuses a blank tenant</text>
+
+  <rect x="590" y="766" width="440" height="70" rx="8" class="code"/>
+  <text x="810" y="790" class="t" text-anchor="middle">Audit before return</text>
+  <text x="810" y="809" class="s" text-anchor="middle">an allowed read is recorded first; if the write fails,</text>
+  <text x="810" y="826" class="s" text-anchor="middle">the read fails. Denials and errors are recorded too.</text>
+
+  <rect x="590" y="856" width="440" height="60" rx="8" class="plat"/>
+  <text x="810" y="880" class="t" text-anchor="middle">Management listener :8081</text>
+  <text x="810" y="899" class="s" text-anchor="middle">health and Prometheus only · internal network only</text>
+
+  <text x="590" y="946" class="s">Unexpected errors reach the caller as one fixed sentence;</text>
+  <text x="590" y="962" class="s">the detail stays in the server log.</text>
 
   <g class="ln" marker-end="url(#a)">
-    <path d="M645 186V208"/><path d="M645 266V288"/><path d="M645 346V368"/>
-    <path d="M645 426V448"/><path d="M645 506V528"/><path d="M645 586V608"/>
+    <path d="M810 392V410"/><path d="M810 470V488"/><path d="M810 548V566"/>
+    <path d="M810 664V682"/><path d="M810 746V764"/>
   </g>
-  <path d="M390 330H415V158H468" class="ln" marker-end="url(#a)"/>
+  <path d="M540 330H588" class="ln" marker-end="url(#a)"/>
+  <circle cx="564" cy="330" r="11" class="bd"/><text x="564" y="334.5" class="bn">3</text>
 
-  <rect x="930" y="110" width="230" height="80" rx="10" class="box"/>
-  <text x="1045" y="142" class="t" text-anchor="middle">OIDC provider</text>
-  <text x="1045" y="162" class="s" text-anchor="middle">discovery + signing keys (JWKS)</text>
-  <text x="1045" y="178" class="s" text-anchor="middle">checked at startup (fail fast)</text>
-  <path d="M820 158L928 150" class="ln" stroke-dasharray="5 4" marker-end="url(#a)"/>
+  <circle cx="590" cy="436" r="11" class="bd"/><text x="590" y="440.5" class="bn">4</text>
+  <circle cx="590" cy="568" r="11" class="bd"/><text x="590" y="572.5" class="bn">5</text>
+  <circle cx="590" cy="684" r="11" class="bd"/><text x="590" y="688.5" class="bn">6</text>
 
-  <rect x="930" y="370" width="230" height="84" rx="10" class="box"/>
-  <text x="1045" y="396" class="t" text-anchor="middle">Audit trail + counter</text>
-  <text x="1045" y="416" class="s" text-anchor="middle">AUDIT.patient-access → log platform</text>
-  <text x="1045" y="434" class="s" text-anchor="middle">append-only access_events table</text>
-  <path d="M820 398L928 405" class="ln" marker-end="url(#a)"/>
-  <path d="M1045 456V556" class="ln" stroke-dasharray="5 4" marker-end="url(#a)"/>
-  <text x="1053" y="512" class="s">stored in the database</text>
+  <!-- JWKS -->
+  <path d="M924 224V262H1010V306" class="ld" marker-end="url(#a)"/>
+  <text x="940" y="256" class="s">validate against JWKS</text>
 
-  <rect x="930" y="560" width="230" height="130" rx="10" class="db"/>
-  <text x="1045" y="590" class="t" text-anchor="middle">PostgreSQL</text>
-  <text x="1045" y="612" class="s" text-anchor="middle">row-level security (forced)</text>
-  <text x="1045" y="630" class="s" text-anchor="middle">app role: SELECT; INSERT on audit only</text>
-  <text x="1045" y="648" class="s" text-anchor="middle">tenant policy on both tables</text>
-  <path d="M820 638L928 625" class="ln" marker-end="url(#a)"/>
-  <text x="858" y="662" class="s">SQL / TLS</text>
+  <!-- ================= DATA ================= -->
+  <rect x="1090" y="270" width="480" height="470" rx="14" class="zdb"/>
+  <text x="1106" y="294" class="z">DATA PLANE · POSTGRESQL · ENFORCES ON ITS OWN</text>
 
-  <rect x="930" y="725" width="230" height="52" rx="10" class="box"/>
-  <text x="1045" y="748" class="t" text-anchor="middle">Flyway migrations</text>
-  <text x="1045" y="766" class="s" text-anchor="middle">separate owner role, not the app role</text>
-  <path d="M1045 725V692" class="ln" stroke-dasharray="5 4" marker-end="url(#a)"/>
+  <rect x="1110" y="310" width="440" height="84" rx="8" class="dbx"/>
+  <text x="1330" y="334" class="t" text-anchor="middle">Two database roles</text>
+  <text x="1330" y="354" class="s" text-anchor="middle">owner: migrations only, never used by the service</text>
+  <text x="1330" y="372" class="s" text-anchor="middle">app role: SELECT on clinical tables, INSERT + SELECT on audit</text>
+  <text x="1330" y="388" class="s" text-anchor="middle">cannot bypass row-level security</text>
 
-  <circle cx="470" cy="130" r="11" class="bd"/><text x="470" y="134.5" class="bn">1</text>
-  <circle cx="470" cy="530" r="11" class="bd"/><text x="470" y="534.5" class="bn">2</text>
-  <circle cx="470" cy="450" r="11" class="bd"/><text x="470" y="454.5" class="bn">3</text>
-  <circle cx="930" cy="560" r="11" class="bd"/><text x="930" y="564.5" class="bn">3</text>
-  <circle cx="930" cy="370" r="11" class="bd"/><text x="930" y="374.5" class="bn">4</text>
+  <rect x="1110" y="414" width="440" height="130" rx="8" class="dbx"/>
+  <text x="1330" y="438" class="t" text-anchor="middle">Clinical tables · row-level security forced</text>
+  <text x="1330" y="460" class="s" text-anchor="middle">patients · assignments · medications · clinical_notes</text>
+  <text x="1330" y="484" class="s" text-anchor="middle">a row is visible only if its tenant matches the transaction's</text>
+  <text x="1330" y="502" class="s" text-anchor="middle">no tenant set → 0 rows</text>
+  <text x="1330" y="526" class="l" text-anchor="middle">holds even if application code forgets a WHERE clause</text>
 
-  <rect x="40" y="672" width="360" height="104" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
-  <text x="56" y="696" class="t">Security layers</text>
-  <text x="56" y="716" class="s">1  Prove who is calling (JWT, DPoP / mTLS)</text>
-  <text x="56" y="734" class="s">2  Decide what they may do (policy)</text>
-  <text x="56" y="752" class="s">3  Database enforces tenant isolation (RLS)</text>
-  <text x="56" y="770" class="s">4  Leave an audit trail</text>
+  <rect x="1110" y="564" width="440" height="150" rx="8" class="dbx"/>
+  <text x="1330" y="588" class="t" text-anchor="middle">access_events · append-only</text>
+  <text x="1330" y="610" class="s" text-anchor="middle">who, what, why, outcome, break-glass flag, justification text</text>
+  <text x="1330" y="634" class="s" text-anchor="middle">UPDATE and DELETE are refused by grants, not by app code</text>
+  <text x="1330" y="652" class="s" text-anchor="middle">tenant policy on insert blocks cross-tenant writes</text>
+  <text x="1330" y="680" class="l" text-anchor="middle">gap: the owner can still alter history</text>
+  <text x="1330" y="698" class="l" text-anchor="middle">(no hash chain or write-once storage yet)</text>
+
+  <path d="M1030 715H1068V470H1108" class="ln" marker-end="url(#a)"/>
+  <circle cx="1049" cy="715" r="11" class="bd"/><text x="1049" y="719.5" class="bn">7</text>
+  <path d="M1030 801H1088V640H1108" class="ln" marker-end="url(#a)"/>
+  <circle cx="1058" cy="801" r="11" class="bd"/><text x="1058" y="805.5" class="bn">8</text>
+
+  <!-- ================= OBSERVABILITY ================= -->
+  <rect x="1090" y="760" width="480" height="200" rx="14" class="zone"/>
+  <text x="1106" y="784" class="z">OBSERVABILITY · NO PHI IN ANY OF IT</text>
+  <rect x="1110" y="798" width="440" height="54" rx="8" class="box"/>
+  <text x="1330" y="820" class="t" text-anchor="middle">Audit log line</text>
+  <text x="1330" y="838" class="s" text-anchor="middle">identifiers only · control characters stripped · WARN on break-glass</text>
+  <rect x="1110" y="862" width="440" height="42" rx="8" class="box"/>
+  <text x="1330" y="882" class="t" text-anchor="middle">Metrics · outcome, purpose, category</text>
+  <text x="1330" y="897" class="s" text-anchor="middle">never an identifier as a label · scraped on :8081</text>
+  <rect x="1110" y="912" width="440" height="36" rx="8" class="plat"/>
+  <text x="1330" y="935" class="s" text-anchor="middle">Alert rules proposed (break-glass rate, denial spikes), not wired up</text>
+
+  <path d="M1030 880H1108" class="ld" marker-end="url(#a)"/>
+  <path d="M1030 826H1108" class="ld" marker-end="url(#a)"/>
+
+  <!-- ================= FAILURE BEHAVIOUR ================= -->
+  <rect x="30" y="680" width="510" height="290" rx="14" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="46" y="704" class="z">FAILURE BEHAVIOUR · EVERY ROW FAILS CLOSED</text>
+  <g class="s">
+    <text x="46" y="732"><tspan class="l">IdP unreachable at startup</tspan> → the service does not start</text>
+    <text x="46" y="758"><tspan class="l">Wrong audience, old or forged token</tspan> → 401</text>
+    <text x="46" y="784"><tspan class="l">Tenant claim missing</tspan> → refused before any query</text>
+    <text x="46" y="810"><tspan class="l">Tenant not set on the DB session</tspan> → 0 rows</text>
+    <text x="46" y="836"><tspan class="l">Audit write fails</tspan> → the read is refused</text>
+    <text x="46" y="862"><tspan class="l">Emergency without scope or justification</tspan> → denied</text>
+    <text x="46" y="888"><tspan class="l">Notes, or another hospital, in an emergency</tspan> → denied</text>
+    <text x="46" y="914"><tspan class="l">Plain HTTP in production</tspan> → 403, never served</text>
+    <text x="46" y="940"><tspan class="l">Unexpected error</tspan> → one fixed message to the caller</text>
+  </g>
+
+  <!-- ================= LEGEND ================= -->
+  <rect x="390" y="556" width="150" height="104" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="402" y="577" class="z">KEY</text>
+  <rect x="402" y="588" width="16" height="12" class="code"/><text x="426" y="598" class="s">enforced in code</text>
+  <rect x="402" y="606" width="16" height="12" class="dbx"/><text x="426" y="616" class="s">enforced by the DB</text>
+  <rect x="402" y="624" width="16" height="12" class="plat"/><text x="426" y="634" class="s">platform's job</text>
+  <rect x="402" y="642" width="16" height="12" class="phi"/><text x="426" y="652" class="s">PHI leaves us</text>
 </svg>

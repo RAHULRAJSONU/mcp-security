@@ -1,86 +1,222 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 560" width="1200" height="560" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000" font-family="Segoe UI, Helvetica, Arial, sans-serif">
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#475569"/></marker>
     <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#b91c1c"/></marker>
     <style>
-      .t{font-size:16px;fill:#0f172a;font-weight:700}
-      .s{font-size:13.5px;fill:#334155}
-      .h{font-size:20px;font-weight:700;fill:#0f172a}
-      .gate{fill:#fef3c7;stroke:#d97706;stroke-width:1.8}
+      .h{font-size:24px;font-weight:700;fill:#0f172a}
+      .sub{font-size:14px;fill:#475569}
+      .z{font-size:14px;font-weight:700;fill:#334155;letter-spacing:.3px}
+      .t{font-size:15px;font-weight:700;fill:#0f172a}
+      .s{font-size:12.5px;fill:#334155}
+      .l{font-size:12.5px;fill:#0f172a;font-weight:600}
+      .rd{font-size:12.5px;fill:#b91c1c;font-weight:600}
+      .gate{fill:#fef3c7;stroke:#d97706;stroke-width:1.7}
+      .dbg{fill:#dcfce7;stroke:#16a34a;stroke-width:1.7}
       .deny{fill:#fee2e2;stroke:#dc2626;stroke-width:1.5}
       .ok{fill:#dcfce7;stroke:#16a34a;stroke-width:1.8}
-      .box{fill:#f8fafc;stroke:#94a3b8;stroke-width:1.5}
-      .ln{stroke:#475569;stroke-width:1.8;fill:none}
+      .dec{fill:#eff6ff;stroke:#3b82f6;stroke-width:1.6}
+      .box{fill:#f8fafc;stroke:#94a3b8;stroke-width:1.4}
+      .panel{fill:#ffffff;stroke:#cbd5e1;stroke-width:1.5}
+      .txn{fill:#f3fbf5;stroke:#16a34a;stroke-width:2;stroke-dasharray:8 5}
+      .ln{stroke:#475569;stroke-width:1.7;fill:none}
       .rl{stroke:#b91c1c;stroke-width:1.6;fill:none}
-      .bd{fill:#d97706}
-      .bn{font-size:13px;font-weight:700;fill:#fff;text-anchor:middle}
+      .bd{fill:#0f172a}
+      .bn{font-size:12px;font-weight:700;fill:#fff;text-anchor:middle}
     </style>
   </defs>
-  <rect width="1200" height="560" fill="#ffffff"/>
-  <text x="40" y="44" class="h">One tool call, three gates, one audit trail</text>
+  <rect width="1600" height="1000" fill="#ffffff"/>
 
-  <rect x="40" y="170" width="100" height="70" rx="10" class="box"/>
-  <text x="90" y="202" class="t" text-anchor="middle">Request</text>
-  <text x="90" y="222" class="s" text-anchor="middle">from agent</text>
-  <path d="M140 205H188" class="ln" marker-end="url(#a)"/>
+  <text x="30" y="38" class="h">One tool call: six checks, one transaction, one audit trail</text>
+  <text x="30" y="62" class="sub">Every red box is a refusal, and nothing after a failed check runs. Amber is enforced in code, green by the database.</text>
 
-  <rect x="190" y="90" width="230" height="230" rx="12" class="gate"/>
-  <circle cx="190" cy="90" r="13" class="bd"/><text x="190" y="94.5" class="bn">1</text>
-  <text x="210" y="124" class="t">Prove who is calling</text>
-  <text x="210" y="154" class="s">• Signature, issuer, audience</text>
-  <text x="210" y="178" class="s">• Token bound to the client:</text>
-  <text x="222" y="196" class="s">key (DPoP) or certificate (mTLS)</text>
-  <text x="210" y="220" class="s">• Everything not listed is</text>
-  <text x="222" y="238" class="s">denied by default</text>
-  <text x="210" y="262" class="s">• Short-lived tokens only</text>
-  <text x="222" y="280" class="s">(15 min by default)</text>
-  <path d="M420 205H458" class="ln" marker-end="url(#a)"/>
+  <!-- transaction bracket spanning stages 3-5 -->
+  <rect x="540" y="88" width="780" height="282" rx="14" class="txn"/>
+  <text x="556" y="110" class="z">ONE DATABASE TRANSACTION · TENANT FIXED BY THE SERVICE, ENFORCED BY THE DATABASE</text>
 
-  <rect x="460" y="90" width="230" height="230" rx="12" class="gate"/>
-  <circle cx="460" cy="90" r="13" class="bd"/><text x="460" y="94.5" class="bn">2</text>
-  <text x="480" y="124" class="t">Decide what they may do</text>
-  <text x="480" y="154" class="s">• One scope per data type</text>
-  <text x="480" y="178" class="s">• Treatment: active assignment</text>
-  <text x="492" y="196" class="s">to this patient and tenant</text>
-  <text x="480" y="220" class="s">• Emergency: break-glass scope</text>
-  <text x="492" y="238" class="s">+ justification, never for notes</text>
-  <text x="480" y="262" class="s">• One generic denial, so IDs</text>
-  <text x="492" y="280" class="s">cannot be enumerated</text>
-  <path d="M690 205H728" class="ln" marker-end="url(#a)"/>
+  <!-- stage cards -->
+  <g>
+    <rect x="30" y="130" width="240" height="152" rx="12" class="gate"/>
+    <circle cx="30" cy="130" r="13" class="bd"/><text x="30" y="134.5" class="bn">1</text>
+    <text x="48" y="158" class="t">Authenticate the token</text>
+    <text x="48" y="182" class="s">HTTPS required (prod)</text>
+    <text x="48" y="199" class="s">signature · issuer · audience</text>
+    <text x="48" y="216" class="s">lifetime limit, default 15 min</text>
+    <text x="48" y="233" class="s">certificate-bound (mtls profile)</text>
+    <text x="48" y="250" class="s">DPoP accepted, not required</text>
 
-  <rect x="730" y="90" width="230" height="230" rx="12" class="gate"/>
-  <circle cx="730" cy="90" r="13" class="bd"/><text x="730" y="94.5" class="bn">3</text>
-  <text x="750" y="124" class="t">Database enforces tenant</text>
-  <text x="750" y="154" class="s">• Tenant set per transaction</text>
-  <text x="750" y="178" class="s">• Forced row-level security,</text>
-  <text x="762" y="196" class="s">also for emergency reads</text>
-  <text x="750" y="220" class="s">• Least-privilege app role,</text>
-  <text x="762" y="238" class="s">separate from migrations</text>
-  <text x="750" y="262" class="s">• Blank tenant refused before</text>
-  <text x="762" y="280" class="s">any query runs</text>
-  <path d="M960 205H998" class="ln" marker-end="url(#a)"/>
+    <rect x="290" y="130" width="240" height="152" rx="12" class="gate"/>
+    <circle cx="290" cy="130" r="13" class="bd"/><text x="290" y="134.5" class="bn">2</text>
+    <text x="308" y="158" class="t">Resolve and parse</text>
+    <text x="308" y="182" class="s">identity, tenant, scopes come</text>
+    <text x="308" y="199" class="s">only from the token</text>
+    <text x="308" y="216" class="s">purpose parsed from a closed list</text>
+    <text x="308" y="233" class="s">justification length-bounded</text>
+    <text x="308" y="250" class="s">tenant claim missing → refuse</text>
 
-  <rect x="1000" y="150" width="160" height="110" rx="12" class="ok"/>
-  <text x="1080" y="196" class="t" text-anchor="middle">Patient data</text>
-  <text x="1080" y="218" class="s" text-anchor="middle">only for the caller's</text>
-  <text x="1080" y="236" class="s" text-anchor="middle">tenant and patients</text>
+    <rect x="550" y="130" width="240" height="152" rx="12" class="dbg"/>
+    <circle cx="550" cy="130" r="13" class="bd"/><text x="550" y="134.5" class="bn">3</text>
+    <text x="568" y="158" class="t">Open a tenant transaction</text>
+    <text x="568" y="182" class="s">a new transaction per request</text>
+    <text x="568" y="199" class="s">tenant set for this one only</text>
+    <text x="568" y="216" class="s">a pooled connection can't</text>
+    <text x="568" y="233" class="s">carry it into the next request</text>
+    <text x="568" y="250" class="s">blank tenant refused first</text>
 
-  <path d="M305 320V358" class="rl" marker-end="url(#r)"/>
-  <path d="M575 320V358" class="rl" marker-end="url(#r)"/>
-  <path d="M845 320V358" class="rl" marker-end="url(#r)"/>
-  <rect x="190" y="360" width="230" height="64" rx="10" class="deny"/>
-  <text x="305" y="388" class="t" text-anchor="middle">401</text>
-  <text x="305" y="408" class="s" text-anchor="middle">missing or invalid token</text>
-  <rect x="460" y="360" width="230" height="64" rx="10" class="deny"/>
-  <text x="575" y="388" class="t" text-anchor="middle">Access denied</text>
-  <text x="575" y="408" class="s" text-anchor="middle">same answer for every cause</text>
-  <rect x="730" y="360" width="230" height="64" rx="10" class="deny"/>
-  <text x="845" y="388" class="t" text-anchor="middle">Zero rows</text>
-  <text x="845" y="408" class="s" text-anchor="middle">fails closed, never leaks</text>
+    <rect x="810" y="130" width="240" height="152" rx="12" class="gate"/>
+    <circle cx="810" cy="130" r="13" class="bd"/><text x="810" y="134.5" class="bn">4</text>
+    <text x="828" y="158" class="t">Authorise</text>
+    <text x="828" y="182" class="s">scope for this data type</text>
+    <text x="828" y="199" class="s">purpose rules (detail below)</text>
+    <text x="828" y="216" class="s">assignments are read under</text>
+    <text x="828" y="233" class="s">row-level security too</text>
+    <text x="828" y="250" class="s">one generic denial</text>
 
-  <rect x="190" y="450" width="770" height="76" rx="10" class="box"/>
-  <circle cx="190" cy="450" r="13" class="bd"/><text x="190" y="454.5" class="bn">4</text>
-  <text x="575" y="475" class="t" text-anchor="middle">Audit trail: allowed, denied or error</text>
-  <text x="575" y="494" class="s" text-anchor="middle">who · tenant · patient · purpose · data type. Logs hold identifiers only. Inputs sanitised against log forging.</text>
-  <text x="575" y="513" class="s" text-anchor="middle">Stored append-only before data is returned: no audit record, no data. Justification visible only to audit.read.</text>
+    <rect x="1070" y="130" width="240" height="152" rx="12" class="dbg"/>
+    <circle cx="1070" cy="130" r="13" class="bd"/><text x="1070" y="134.5" class="bn">5</text>
+    <text x="1088" y="158" class="t">Read the data</text>
+    <text x="1088" y="182" class="s">app role: SELECT only</text>
+    <text x="1088" y="199" class="s">row-level security forced</text>
+    <text x="1088" y="216" class="s">no tenant set → zero rows</text>
+    <text x="1088" y="233" class="s">another tenant's row looks</text>
+    <text x="1088" y="250" class="s">the same as a missing one</text>
+
+    <rect x="1330" y="130" width="240" height="152" rx="12" class="gate"/>
+    <circle cx="1330" cy="130" r="13" class="bd"/><text x="1330" y="134.5" class="bn">6</text>
+    <text x="1348" y="158" class="t">Record, then return</text>
+    <text x="1348" y="182" class="s">an allowed read is stored first</text>
+    <text x="1348" y="199" class="s">write fails → the read fails</text>
+    <text x="1348" y="216" class="s">denials and errors recorded</text>
+    <text x="1348" y="233" class="s">unexpected error → one fixed</text>
+    <text x="1348" y="250" class="s">sentence, detail in server log</text>
+  </g>
+
+  <g class="ln" marker-end="url(#a)">
+    <path d="M272 206H288"/><path d="M532 206H548"/><path d="M792 206H808"/>
+    <path d="M1052 206H1068"/><path d="M1312 206H1328"/>
+  </g>
+
+  <!-- refusals -->
+  <g class="rl" marker-end="url(#r)">
+    <path d="M150 282V304"/><path d="M410 282V304"/><path d="M670 282V304"/>
+    <path d="M930 282V304"/><path d="M1190 282V304"/><path d="M1450 282V304"/>
+  </g>
+  <g>
+    <rect x="30" y="306" width="240" height="54" rx="10" class="deny"/>
+    <text x="150" y="329" class="t" text-anchor="middle">401</text>
+    <text x="150" y="348" class="s" text-anchor="middle">no token, or a bad one</text>
+    <rect x="290" y="306" width="240" height="54" rx="10" class="deny"/>
+    <text x="410" y="329" class="t" text-anchor="middle">Refused</text>
+    <text x="410" y="348" class="s" text-anchor="middle">no query runs</text>
+    <rect x="550" y="306" width="240" height="54" rx="10" class="deny"/>
+    <text x="670" y="329" class="t" text-anchor="middle">Refused</text>
+    <text x="670" y="348" class="s" text-anchor="middle">before any query</text>
+    <rect x="810" y="306" width="240" height="54" rx="10" class="deny"/>
+    <text x="930" y="329" class="t" text-anchor="middle">Denied</text>
+    <text x="930" y="348" class="s" text-anchor="middle">same text for every cause</text>
+    <rect x="1070" y="306" width="240" height="54" rx="10" class="deny"/>
+    <text x="1190" y="329" class="t" text-anchor="middle">Zero rows</text>
+    <text x="1190" y="348" class="s" text-anchor="middle">reported as the same denial</text>
+    <rect x="1330" y="306" width="240" height="54" rx="10" class="deny"/>
+    <text x="1450" y="329" class="t" text-anchor="middle">Read refused</text>
+    <text x="1450" y="348" class="s" text-anchor="middle">if the audit row can't be written</text>
+  </g>
+
+  <!-- ================= GATE 4 IN DETAIL ================= -->
+  <rect x="30" y="392" width="1540" height="372" rx="14" class="panel"/>
+  <text x="48" y="418" class="z">STAGE 4 IN DETAIL · THE AUTHORISATION DECISION</text>
+  <text x="48" y="438" class="s">Every "no" is a denial. The caller gets the same sentence whatever the cause.</text>
+
+  <rect x="50" y="530" width="190" height="112" rx="10" class="box"/>
+  <text x="145" y="556" class="t" text-anchor="middle">Inputs</text>
+  <text x="145" y="578" class="s" text-anchor="middle">token: sub, tenant, scopes</text>
+  <text x="145" y="596" class="s" text-anchor="middle">tool: data type, purpose</text>
+  <text x="145" y="614" class="s" text-anchor="middle">request: patient id</text>
+
+  <rect x="280" y="546" width="190" height="80" rx="10" class="dec"/>
+  <text x="375" y="582" class="l" text-anchor="middle">Token has the scope</text>
+  <text x="375" y="599" class="l" text-anchor="middle">for this data type?</text>
+  <text x="375" y="648" class="rd" text-anchor="middle">no → deny</text>
+
+  <rect x="520" y="546" width="150" height="80" rx="10" class="dec"/>
+  <text x="595" y="591" class="l" text-anchor="middle">Purpose?</text>
+  <text x="595" y="648" class="rd" text-anchor="middle">anything else → deny</text>
+
+  <path d="M242 586H278" class="ln" marker-end="url(#a)"/>
+  <path d="M472 586H518" class="ln" marker-end="url(#a)"/>
+  <text x="482" y="578" class="s">yes</text>
+
+  <!-- treatment lane -->
+  <path d="M672 586H706V500H738" class="ln" marker-end="url(#a)"/>
+  <text x="620" y="520" class="l">TREATMENT</text>
+  <rect x="740" y="456" width="220" height="88" rx="10" class="dec"/>
+  <text x="850" y="494" class="l" text-anchor="middle">Active assignment to this</text>
+  <text x="850" y="511" class="l" text-anchor="middle">patient, in this tenant?</text>
+  <text x="850" y="562" class="rd" text-anchor="middle">no → deny</text>
+  <path d="M962 500H1010" class="ln" marker-end="url(#a)"/>
+  <text x="974" y="492" class="s">yes</text>
+  <rect x="1012" y="468" width="200" height="64" rx="10" class="ok"/>
+  <text x="1112" y="496" class="t" text-anchor="middle">Allow</text>
+  <text x="1112" y="515" class="s" text-anchor="middle">continue to stage 5</text>
+
+  <!-- emergency lane -->
+  <path d="M672 586H706V690H738" class="ln" marker-end="url(#a)"/>
+  <text x="620" y="684" class="l">EMERGENCY</text>
+  <rect x="740" y="650" width="200" height="80" rx="10" class="dec"/>
+  <text x="840" y="686" class="l" text-anchor="middle">Data type allows</text>
+  <text x="840" y="703" class="l" text-anchor="middle">break-glass?</text>
+  <text x="840" y="748" class="rd" text-anchor="middle">notes, roster, audit: deny</text>
+  <path d="M942 690H978" class="ln" marker-end="url(#a)"/>
+  <text x="948" y="682" class="s">yes</text>
+  <rect x="980" y="650" width="190" height="80" rx="10" class="dec"/>
+  <text x="1075" y="686" class="l" text-anchor="middle">Token has the</text>
+  <text x="1075" y="703" class="l" text-anchor="middle">break-glass scope?</text>
+  <text x="1075" y="748" class="rd" text-anchor="middle">no → deny</text>
+  <path d="M1172 690H1208" class="ln" marker-end="url(#a)"/>
+  <text x="1178" y="682" class="s">yes</text>
+  <rect x="1210" y="650" width="200" height="80" rx="10" class="dec"/>
+  <text x="1310" y="686" class="l" text-anchor="middle">Justification of</text>
+  <text x="1310" y="703" class="l" text-anchor="middle">15 to 500 characters?</text>
+  <text x="1310" y="748" class="rd" text-anchor="middle">no → deny</text>
+  <path d="M1412 690H1438" class="ln" marker-end="url(#a)"/>
+  <text x="1414" y="682" class="s">yes</text>
+  <rect x="1440" y="632" width="118" height="116" rx="10" class="ok"/>
+  <text x="1499" y="656" class="t" text-anchor="middle">Allow,</text>
+  <text x="1499" y="672" class="t" text-anchor="middle">flagged</text>
+  <text x="1499" y="692" class="s" text-anchor="middle">assignment</text>
+  <text x="1499" y="707" class="s" text-anchor="middle">skipped, tenant</text>
+  <text x="1499" y="722" class="s" text-anchor="middle">still enforced,</text>
+  <text x="1499" y="737" class="s" text-anchor="middle">WARN + metric</text>
+
+  <rect x="50" y="664" width="540" height="90" rx="10" class="deny"/>
+  <text x="68" y="686" class="t">The same sentence for every "no"</text>
+  <text x="68" y="706" class="s">unknown patient, another tenant, a revoked assignment, a missing</text>
+  <text x="68" y="723" class="s">scope, a bad justification. Recorded as DENIED. Audit tools take a</text>
+  <text x="68" y="740" class="s">separate path that needs only the audit scope.</text>
+
+  <!-- ================= WHAT GETS RECORDED ================= -->
+  <rect x="30" y="784" width="1540" height="200" rx="14" class="panel"/>
+  <text x="48" y="810" class="z">WHAT GETS RECORDED, AND WHAT HAPPENS IF RECORDING FAILS</text>
+
+  <rect x="50" y="826" width="1220" height="28" class="box"/>
+  <text x="62" y="845" class="l">Outcome</text>
+  <text x="302" y="845" class="l">Audit row</text>
+  <text x="782" y="845" class="l">If the row can't be written</text>
+  <g class="s">
+    <rect x="50" y="854" width="1220" height="30" fill="#fff" stroke="#e2e8f0"/>
+    <text x="62" y="874" class="l">Allowed</text><text x="302" y="874">stored before the data is returned</text><text x="782" y="874"><tspan class="rd">the read is refused</tspan>: no audit record, no data</text>
+    <rect x="50" y="884" width="1220" height="30" fill="#fff" stroke="#e2e8f0"/>
+    <text x="62" y="904" class="l">Denied</text><text x="302" y="904">recorded as DENIED, best effort</text><text x="782" y="904">the denial stands either way</text>
+    <rect x="50" y="914" width="1220" height="30" fill="#fff" stroke="#e2e8f0"/>
+    <text x="62" y="934" class="l">Error</text><text x="302" y="934">recorded as ERROR, best effort</text><text x="782" y="934">the caller still gets one fixed sentence</text>
+    <rect x="50" y="944" width="1220" height="30" fill="#fff" stroke="#e2e8f0"/>
+    <text x="62" y="964" class="l">Token rejected (401)</text><text x="302" y="964">not recorded by this service</text><text x="782" y="964">the edge and the identity provider hold that record</text>
+  </g>
+
+  <rect x="1290" y="826" width="260" height="148" rx="10" class="box"/>
+  <text x="1306" y="850" class="t">What the logs carry</text>
+  <text x="1306" y="872" class="s">identifiers only, never clinical</text>
+  <text x="1306" y="889" class="s">data. Inputs are sanitised so a</text>
+  <text x="1306" y="906" class="s">crafted ID can't forge an entry.</text>
+  <text x="1306" y="930" class="s">Justification text is stored in the</text>
+  <text x="1306" y="947" class="s">table, visible only with audit.read.</text>
 </svg>
