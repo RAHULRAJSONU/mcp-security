@@ -63,7 +63,7 @@ Each row is one mechanism, the threat it addresses, and the test that proves it.
 | Mechanism | Threat it addresses | Implemented in | Proved by |
 |---|---|---|---|
 | Issuer and **audience** validation | Token minted for another service is accepted | `JwtSecurityConfig` | `JwtSecurityConfigTest` (audience validator) |
-| DPoP sender-constrained tokens | Stolen token replayed from a log or proxy | `SecurityConfig` | *Not yet tested* |
+| DPoP sender-constrained tokens | Stolen token replayed from a log or proxy | `SecurityConfig` | **Not enforced.** A live test with a real Keycloak token showed plain bearer tokens are accepted, so DPoP is supported but optional |
 | Mutual TLS on the public listener + certificate-bound tokens (RFC 8705), profile `mtls` | Impersonated client; stolen token replayed from another machine | `CertificateBoundTokenFilter`, `application-mtls.yaml` | `MutualTlsIT`, `CertificateBoundTokenFilterTest` |
 | Deny-by-default routing, hardened headers | Unintended exposure | `SecurityConfig` | `SecurityEndpointsIT` |
 | Scope + purpose + active-assignment policy | Over-broad access | `PatientAccessPolicy` | `PatientAccessPolicyTest`, `PatientAccessEndToEndIT` |
@@ -163,6 +163,8 @@ SPRING_PROFILES_ACTIVE=local OIDC_ISSUER=https://your-idp/realms/your-realm ./mv
 The `local` profile supplies developer defaults for the database and public URL. The service listens on `8080`,
 with health and metrics on `8081`.
 
+To practise against a real identity provider and Claude Desktop, follow the [hands-on guide](docs/cloud-iam-guide.md): a free Cloud-IAM realm, real tokens, sixteen policy scenarios with expected results, and a Desktop setup over HTTP.
+
 ## Configuration
 
 All configuration is environment-driven; nothing secret has a default outside the `local` profile.
@@ -246,7 +248,7 @@ loaded only by the `local` profile. An already-migrated dev DB will fail checksu
 
 - Tamper evidence for the audit trail beyond database privileges. The application cannot edit or delete history, but the database owner still can, and there is no hash chain or write-once storage. Auditors can review break-glass use, but there is no approval workflow.
 - Shipped alert rules, dashboards and a measured load test, which is illustrative).
-- Automated tests for DPoP and injection attempts, and a check that plain bearer tokens are or aren't accepted as intended.
+- Automated tests for DPoP and injection attempts, and making DPoP mandatory. A live test against a real Keycloak realm confirmed plain bearer tokens are currently accepted.
 - Role- or purpose-based field filtering. The summary returns an id, name and date of birth (no MRN), and the notes tool returns full note bodies, for any caller holding the scope.
 - Rate limiting, TLS termination and WAF, which are assumed to sit at the platform or a gateway. Mutual TLS is implemented only for the public listener; gateway-to-service and service-to-database mTLS, revocation checking, and an end-to-end run with a real identity provider are not.
 - A formal risk analysis and compliance review is an engineering aid, not a certification).
