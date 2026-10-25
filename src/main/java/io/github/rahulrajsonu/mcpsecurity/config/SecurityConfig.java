@@ -4,6 +4,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import io.github.rahulrajsonu.mcpsecurity.security.CertificateBoundTokenFilter;
+import io.github.rahulrajsonu.mcpsecurity.security.RateLimitFilter;
+import io.github.rahulrajsonu.mcpsecurity.security.RateLimiter;
 import io.github.rahulrajsonu.mcpsecurity.security.RequireHttpsFilter;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
@@ -33,7 +35,11 @@ public class SecurityConfig {
             @Value("${app.mtls.enabled:false}")
             boolean mtlsEnabled,
             @Value("${app.mtls.require-certificate-bound-tokens:true}")
-            boolean requireBoundTokens) throws Exception {
+            boolean requireBoundTokens,
+            RateLimiter rateLimiter) throws Exception {
+
+        // Refuse floods before any token parsing. Per address first, then per token.
+        http.addFilterBefore(new RateLimitFilter(rateLimiter), BearerTokenAuthenticationFilter.class);
 
         // With mutual TLS, tokens must be bound to the client certificate (RFC 8705).
         if (mtlsEnabled) {
