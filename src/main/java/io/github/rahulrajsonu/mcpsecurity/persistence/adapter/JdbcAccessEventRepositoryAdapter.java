@@ -25,11 +25,12 @@ public class JdbcAccessEventRepositoryAdapter
             rs.getString("category"),
             rs.getString("outcome"),
             rs.getBoolean("break_glass"),
-            rs.getString("justification"));
+            rs.getString("justification"),
+            rs.getString("client_id"));
 
     private static final String COLUMNS = """
             occurred_at, subject, patient_id, purpose, category,
-            outcome, break_glass, justification
+            outcome, break_glass, justification, client_id
             """;
 
     private final JdbcClient jdbc;
@@ -39,10 +40,10 @@ public class JdbcAccessEventRepositoryAdapter
         jdbc.sql("""
                         INSERT INTO access_events (
                             id, tenant_id, occurred_at, subject, patient_id, purpose,
-                            category, outcome, break_glass, justification)
+                            category, outcome, break_glass, justification, client_id)
                         VALUES (
                             :id, :tenantId, :occurredAt, :subject, :patientId, :purpose,
-                            :category, :outcome, :breakGlass, :justification)
+                            :category, :outcome, :breakGlass, :justification, :clientId)
                         """)
                 .param("id", UUID.randomUUID().toString())
                 .param("tenantId", tenantId)
@@ -54,6 +55,7 @@ public class JdbcAccessEventRepositoryAdapter
                 .param("outcome", event.outcome())
                 .param("breakGlass", event.breakGlass())
                 .param("justification", event.justification())
+                .param("clientId", event.clientId())
                 .update();
     }
 

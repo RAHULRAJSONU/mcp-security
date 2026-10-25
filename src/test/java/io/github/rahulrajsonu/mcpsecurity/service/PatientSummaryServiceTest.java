@@ -37,7 +37,7 @@ class PatientSummaryServiceTest {
 
         service = new PatientSummaryService(
                 policy,
-                patients
+                new VisiblePatients(patients)
         );
     }
 

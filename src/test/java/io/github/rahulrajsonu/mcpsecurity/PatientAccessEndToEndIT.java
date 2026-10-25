@@ -47,7 +47,7 @@ class PatientAccessEndToEndIT extends AbstractPostgresIT {
     }
 
     private static ClinicalPrincipal doctor(String tenant, String... scopes) {
-        return new ClinicalPrincipal("doctor-101", tenant, Set.of(scopes));
+        return new ClinicalPrincipal("doctor-101", tenant, Set.of(scopes), "healthcare-mcp-client");
     }
 
     private PatientSummary read(ClinicalPrincipal p, AccessPurpose purpose, String why, String patient) {

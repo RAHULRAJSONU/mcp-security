@@ -53,7 +53,7 @@ class PhiRedactionTest {
     @Test
     void accessEventDoesNotPrintTheJustification() {
         assertNoPhi(new AccessEvent(Instant.now(), "doctor-101", "p1", "EMERGENCY",
-                "MEDICATIONS", "ALLOWED", true, WHY));
+                "MEDICATIONS", "ALLOWED", true, WHY, "healthcare-mcp-client"));
     }
 
     @Test

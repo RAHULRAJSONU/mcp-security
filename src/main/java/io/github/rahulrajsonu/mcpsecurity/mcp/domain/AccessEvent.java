@@ -15,12 +15,13 @@ public record AccessEvent(
         String category,
         String outcome,
         boolean breakGlass,
-        String justification
+        String justification,
+        String clientId
 ) {
     @Override
     public String toString() {
         return "AccessEvent[subject=" + subject + ", patientId=" + patientId
-                + ", category=" + category + ", outcome=" + outcome
+                + ", clientId=" + clientId + ", category=" + category + ", outcome=" + outcome
                 + ", justification " + (justification == null ? "absent" : "redacted") + "]";
     }
 }

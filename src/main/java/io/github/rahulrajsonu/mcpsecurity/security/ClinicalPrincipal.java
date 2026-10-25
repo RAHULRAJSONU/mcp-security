@@ -6,7 +6,9 @@ import java.util.Set;
 public record ClinicalPrincipal(
         String subject,
         String tenantId,
-        Set<String> scopes
+        Set<String> scopes,
+        String clientId,
+        String authContext
 ) {
     public ClinicalPrincipal {
         Objects.requireNonNull(subject, "subject");
@@ -27,6 +29,14 @@ public record ClinicalPrincipal(
                     "Invalid scope value"
             );
         }
+    }
+
+    public ClinicalPrincipal(String subject, String tenantId, Set<String> scopes) {
+        this(subject, tenantId, scopes, null, null);
+    }
+
+    public ClinicalPrincipal(String subject, String tenantId, Set<String> scopes, String clientId) {
+        this(subject, tenantId, scopes, clientId, null);
     }
 
     public boolean hasScope(String scope) {

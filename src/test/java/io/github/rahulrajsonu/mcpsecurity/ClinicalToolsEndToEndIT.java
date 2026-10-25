@@ -1,18 +1,19 @@
 package io.github.rahulrajsonu.mcpsecurity;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static io.github.rahulrajsonu.mcpsecurity.mcp.tool.ToolResultAssert.assertDenied;
+import static io.github.rahulrajsonu.mcpsecurity.mcp.tool.ToolResultAssert.items;
 
 import io.github.rahulrajsonu.mcpsecurity.mcp.domain.AccessEvent;
 import io.github.rahulrajsonu.mcpsecurity.mcp.tool.AuditMcpTools;
 import io.github.rahulrajsonu.mcpsecurity.mcp.tool.PatientMcpTools;
+import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -46,10 +47,16 @@ class ClinicalToolsEndToEndIT extends AbstractPostgresIT {
                 .subject(subject)
                 .claim("tenant_id", tenant)
                 .claim("scope", scopes)
+                .claim("azp", "healthcare-mcp-client")
                 .issuedAt(Instant.now())
                 .expiresAt(Instant.now().plusSeconds(60))
                 .build();
         SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt, List.of()));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<AccessEvent> events(CallToolResult result) {
+        return (List<AccessEvent>) items(result);
     }
 
     private static String uniqueReason() {
@@ -61,20 +68,20 @@ class ClinicalToolsEndToEndIT extends AbstractPostgresIT {
     @Test
     void rosterListsOnlyActiveAssignmentsInTheCallersTenant() {
         loginAs("doctor-101", "hospital-A", "patient.read");
-        assertThat(patientTools.listMyPatients()).extracting("patientId").containsExactly("patient-400");
+        assertThat(items(patientTools.listMyPatients())).extracting("patientId").containsExactly("patient-400");
 
         loginAs("doctor-202", "hospital-A", "patient.read");
-        assertThat(patientTools.listMyPatients()).extracting("patientId").containsExactly("patient-400", "patient-500");
+        assertThat(items(patientTools.listMyPatients())).extracting("patientId").containsExactly("patient-400", "patient-500");
 
         loginAs("doctor-303", "hospital-B", "patient.read");
-        assertThat(patientTools.listMyPatients()).extracting("patientId").containsExactly("patient-600");
+        assertThat(items(patientTools.listMyPatients())).extracting("patientId").containsExactly("patient-600");
     }
 
     @Test
     void rosterNeedsTheReadScope() {
         loginAs("doctor-101", "hospital-A", "medication.read");
 
-        assertThatThrownBy(() -> patientTools.listMyPatients()).isInstanceOf(AccessDeniedException.class);
+        assertDenied(patientTools.listMyPatients());
     }
 
     // ---- medications: own scope, break-glass allowed ----
@@ -82,28 +89,25 @@ class ClinicalToolsEndToEndIT extends AbstractPostgresIT {
     @Test
     void medicationsNeedTheirOwnScopeAndAnAssignment() {
         loginAs("doctor-101", "hospital-A", "patient.read medication.read");
-        assertThat(patientTools.getPatientMedications("patient-400", null, null))
+        assertThat(items(patientTools.getPatientMedications("patient-400", null, null)))
                 .extracting("name").containsExactly("Atorvastatin", "Lisinopril");
 
         // Revoked assignment on patient-500.
-        assertThatThrownBy(() -> patientTools.getPatientMedications("patient-500", null, null))
-                .isInstanceOf(AccessDeniedException.class);
+        assertDenied(patientTools.getPatientMedications("patient-500", null, null));
 
         // patient.read alone does not open medications.
         loginAs("doctor-101", "hospital-A", "patient.read");
-        assertThatThrownBy(() -> patientTools.getPatientMedications("patient-400", null, null))
-                .isInstanceOf(AccessDeniedException.class);
+        assertDenied(patientTools.getPatientMedications("patient-400", null, null));
     }
 
     @Test
     void breakGlassOpensMedicationsWithinTheTenantOnly() {
         loginAs("doctor-101", "hospital-A", "patient.read medication.read patient.break_glass");
 
-        assertThat(patientTools.getPatientMedications("patient-500", "EMERGENCY", uniqueReason()))
+        assertThat(items(patientTools.getPatientMedications("patient-500", "EMERGENCY", uniqueReason())))
                 .extracting("name").containsExactly("Metformin");
 
-        assertThatThrownBy(() -> patientTools.getPatientMedications("patient-600", "EMERGENCY", uniqueReason()))
-                .isInstanceOf(AccessDeniedException.class);
+        assertDenied(patientTools.getPatientMedications("patient-600", "EMERGENCY", uniqueReason()));
     }
 
     // ---- notes: own scope, break-glass refused ----
@@ -112,11 +116,10 @@ class ClinicalToolsEndToEndIT extends AbstractPostgresIT {
     void notesAreReadableForTreatmentButNeverThroughBreakGlass() {
         loginAs("doctor-101", "hospital-A", "patient.read notes.read patient.break_glass");
 
-        assertThat(patientTools.getClinicalNotes("patient-400", null, null)).hasSize(1);
+        assertThat(items(patientTools.getClinicalNotes("patient-400", null, null))).hasSize(1);
 
         // Same caller, same scopes: break-glass works for medications elsewhere, but not here.
-        assertThatThrownBy(() -> patientTools.getClinicalNotes("patient-500", "EMERGENCY", uniqueReason()))
-                .isInstanceOf(AccessDeniedException.class);
+        assertDenied(patientTools.getClinicalNotes("patient-500", "EMERGENCY", uniqueReason()));
     }
 
     // ---- audit: separate duty, durable, tenant-isolated ----
@@ -129,10 +132,10 @@ class ClinicalToolsEndToEndIT extends AbstractPostgresIT {
         patientTools.getPatientMedications("patient-500", "EMERGENCY", reason);
 
         // The clinician who did it cannot read the audit trail.
-        assertThatThrownBy(() -> auditTools.listBreakGlassEvents(50)).isInstanceOf(AccessDeniedException.class);
+        assertDenied(auditTools.listBreakGlassEvents(50));
 
         loginAs("compliance-1", "hospital-A", "audit.read");
-        List<AccessEvent> events = auditTools.listBreakGlassEvents(200);
+        List<AccessEvent> events = events(auditTools.listBreakGlassEvents(200));
 
         assertThat(events).anySatisfy(event -> {
             assertThat(event.subject()).isEqualTo("doctor-101");
@@ -146,11 +149,10 @@ class ClinicalToolsEndToEndIT extends AbstractPostgresIT {
     @Test
     void deniedAttemptsAreRecordedToo() {
         loginAs("doctor-101", "hospital-A", "patient.read");
-        assertThatThrownBy(() -> patientTools.getPatientSummary("patient-500", null, null))
-                .isInstanceOf(AccessDeniedException.class);
+        assertDenied(patientTools.getPatientSummary("patient-500", null, null));
 
         loginAs("compliance-1", "hospital-A", "audit.read");
-        assertThat(auditTools.getAccessHistory("patient-500", 200)).anySatisfy(event -> {
+        assertThat(events(auditTools.getAccessHistory("patient-500", 200))).anySatisfy(event -> {
             assertThat(event.subject()).isEqualTo("doctor-101");
             assertThat(event.outcome()).isEqualTo("DENIED");
         });
@@ -164,7 +166,7 @@ class ClinicalToolsEndToEndIT extends AbstractPostgresIT {
         loginAs("compliance-B", "hospital-B", "audit.read");
 
         // Another hospital's auditor sees none of hospital-A's history, even by patient id.
-        assertThat(auditTools.getAccessHistory("patient-400", 200)).isEmpty();
+        assertThat(items(auditTools.getAccessHistory("patient-400", 200))).isEmpty();
     }
 
     @Test
@@ -172,7 +174,7 @@ class ClinicalToolsEndToEndIT extends AbstractPostgresIT {
         loginAs("compliance-1", "hospital-A", "audit.read");
         auditTools.getAccessHistory("patient-400", 10);
 
-        assertThat(auditTools.getAccessHistory("patient-400", 200)).anySatisfy(event -> {
+        assertThat(events(auditTools.getAccessHistory("patient-400", 200))).anySatisfy(event -> {
             assertThat(event.subject()).isEqualTo("compliance-1");
             assertThat(event.category()).isEqualTo("ACCESS_AUDIT");
         });

@@ -1,10 +1,7 @@
 package io.github.rahulrajsonu.mcpsecurity.service;
 
-import io.github.rahulrajsonu.mcpsecurity.mcp.domain.Patient;
 import io.github.rahulrajsonu.mcpsecurity.mcp.domain.PatientSummary;
-import io.github.rahulrajsonu.mcpsecurity.persistence.repository.PatientRepository;
 import io.github.rahulrajsonu.mcpsecurity.security.ClinicalAccessContext;
-import io.github.rahulrajsonu.mcpsecurity.exception.ClinicalAccessDeniedException;
 import io.github.rahulrajsonu.mcpsecurity.security.PatientAccessPolicy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,14 +10,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class PatientSummaryService {
 
     private final PatientAccessPolicy accessPolicy;
-    private final PatientRepository patients;
+    private final VisiblePatients visiblePatients;
 
     public PatientSummaryService(
             PatientAccessPolicy accessPolicy,
-            PatientRepository patients) {
+            VisiblePatients visiblePatients) {
 
         this.accessPolicy = accessPolicy;
-        this.patients = patients;
+        this.visiblePatients = visiblePatients;
     }
 
     @Transactional(readOnly = true)
@@ -30,15 +27,6 @@ public class PatientSummaryService {
 
         accessPolicy.requireReadAccess(context, patientId);
 
-        Patient patient = patients
-                .findByTenantIdAndId(
-                        context.principal().tenantId(),
-                        patientId
-                )
-                .orElseThrow(
-                        ClinicalAccessDeniedException::new
-                );
-
-        return PatientSummary.from(patient);
+        return PatientSummary.from(visiblePatients.require(context, patientId));
     }
 }

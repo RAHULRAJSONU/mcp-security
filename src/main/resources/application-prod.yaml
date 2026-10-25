@@ -1,6 +1,9 @@
 app:
   security:
     require-https: true
+    break-glass:
+      # Fails closed: if the identity provider never issues this acr, break-glass is unavailable.
+      required-acr: ${BREAK_GLASS_ACR:urn:healthcare:acr:step-up}
 
 logging:
   structured:

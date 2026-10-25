@@ -47,12 +47,13 @@ public class AccessAuditLogger {
                 "purpose", context.purpose().name(),
                 "category", category.name()).increment();
 
-        String line = "patient_access outcome={} subject={} tenant={} patient={} purpose={} category={} break_glass={} justification_chars={}";
+        String line = "patient_access outcome={} subject={} tenant={} patient={} client={} purpose={} category={} break_glass={} justification_chars={}";
         Object[] fields = {
                 outcome,
                 sanitize(principal.subject()),
                 sanitize(principal.tenantId()),
                 sanitize(patientId),
+                sanitize(principal.clientId()),
                 context.purpose(),
                 category,
                 breakGlass,

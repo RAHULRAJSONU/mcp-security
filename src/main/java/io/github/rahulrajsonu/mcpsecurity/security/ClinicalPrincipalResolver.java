@@ -26,6 +26,9 @@ public class ClinicalPrincipalResolver {
         String subject = jwt.getSubject();
         String tenantId = jwt.getClaimAsString("tenant_id");
         String scopeClaim = jwt.getClaimAsString("scope");
+        String clientId = jwt.getClaimAsString("azp");
+        // Authentication context class: set by the identity provider after a human step-up.
+        String authContext = jwt.getClaimAsString("acr");
 
         if (subject == null || subject.isBlank()) {
             throw new AccessDeniedException(
@@ -48,7 +51,9 @@ public class ClinicalPrincipalResolver {
         return new ClinicalPrincipal(
                 subject,
                 tenantId,
-                scopes
+                scopes,
+                clientId,
+                authContext
         );
     }
 }

@@ -87,6 +87,14 @@ app:
       audience: ${JWT_AUDIENCE:healthcare-mcp-server}
       # Longest accepted access-token lifetime (exp - iat): the "automatic logoff" control.
       max-lifetime: ${JWT_MAX_LIFETIME:PT15M}
+    # Per (tenant, user, client) tool-call quota, and how long agent-registry lookups are reused.
+    agent:
+      calls-per-minute: ${AGENT_CALLS_PER_MINUTE:120}
+      calls-per-day: ${AGENT_CALLS_PER_DAY:5000}
+      registry-cache-ttl: ${AGENT_REGISTRY_CACHE_TTL:PT5S}
+    # Emergency access needs this acr claim in the token. Blank turns the check off (local only).
+    break-glass:
+      required-acr: ${BREAK_GLASS_ACR:}
   oauth:
     # Only used by the optional `oauth-demo` profile.
     client-id: ${OAUTH_CLIENT_ID:healthcare-mcp-client}

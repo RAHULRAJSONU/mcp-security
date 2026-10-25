@@ -1,8 +1,9 @@
 package io.github.rahulrajsonu.mcpsecurity.security;
 
+import io.github.rahulrajsonu.mcpsecurity.config.BreakGlassProperties;
 import io.github.rahulrajsonu.mcpsecurity.exception.PatientAccessDeniedException;
 import io.github.rahulrajsonu.mcpsecurity.persistence.repository.PatientAssignmentRepository;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -10,7 +11,6 @@ import org.springframework.stereotype.Service;
  * tell "no such patient" from "not yours" from "missing scope".
  */
 @Service
-@RequiredArgsConstructor
 public class PatientAccessPolicy {
 
     public static final String READ_SCOPE = "patient.read";
@@ -21,6 +21,18 @@ public class PatientAccessPolicy {
     static final int MAX_JUSTIFICATION_CHARS = 500;
 
     private final PatientAssignmentRepository assignments;
+    private final BreakGlassProperties breakGlass;
+
+    @Autowired
+    public PatientAccessPolicy(PatientAssignmentRepository assignments, BreakGlassProperties breakGlass) {
+        this.assignments = assignments;
+        this.breakGlass = breakGlass;
+    }
+
+    /** Without a step-up requirement: for tests and local development. */
+    public PatientAccessPolicy(PatientAssignmentRepository assignments) {
+        this(assignments, new BreakGlassProperties(""));
+    }
 
     public void requireReadAccess(
             ClinicalAccessContext context,
@@ -95,7 +107,16 @@ public class PatientAccessPolicy {
      * never crosses tenants: row-level security still applies.
      */
     private void requireBreakGlass(ClinicalAccessContext context) {
-        if (!context.principal().hasScope(BREAK_GLASS_SCOPE)) {
+        ClinicalPrincipal principal = context.principal();
+
+        if (!principal.hasScope(BREAK_GLASS_SCOPE)) {
+            throw new PatientAccessDeniedException();
+        }
+
+        // The purpose and justification are arguments the caller (possibly a model)
+        // picks, so the token itself must prove a human step-up the model cannot mint.
+        if (breakGlass.stepUpRequired()
+                && !breakGlass.requiredAcr().equals(principal.authContext())) {
             throw new PatientAccessDeniedException();
         }
 

@@ -3,12 +3,15 @@ package io.github.rahulrajsonu.mcpsecurity.service;
 import io.github.rahulrajsonu.mcpsecurity.exception.AuditUnavailableException;
 import io.github.rahulrajsonu.mcpsecurity.exception.ClinicalAccessDeniedException;
 import io.github.rahulrajsonu.mcpsecurity.exception.PatientAccessDeniedException;
+import io.github.rahulrajsonu.mcpsecurity.exception.RateLimitExceededException;
 import io.github.rahulrajsonu.mcpsecurity.exception.RequestFailedException;
 import io.github.rahulrajsonu.mcpsecurity.mcp.domain.AccessEvent;
 import io.github.rahulrajsonu.mcpsecurity.mcp.domain.ClinicalNote;
 import io.github.rahulrajsonu.mcpsecurity.mcp.domain.Medication;
 import io.github.rahulrajsonu.mcpsecurity.mcp.domain.PatientSummary;
 import io.github.rahulrajsonu.mcpsecurity.mcp.domain.RosterEntry;
+import io.github.rahulrajsonu.mcpsecurity.security.AgentAccessPolicy;
+import io.github.rahulrajsonu.mcpsecurity.security.AgentQuota;
 import io.github.rahulrajsonu.mcpsecurity.security.ClinicalAccessContext;
 import io.github.rahulrajsonu.mcpsecurity.security.DataCategory;
 import io.github.rahulrajsonu.mcpsecurity.security.TenantScopedExecutor;
@@ -33,11 +36,16 @@ public class SecuredPatientQueryService {
     /** Audit target for operations that are not about one patient. */
     static final String NO_PATIENT = "*";
 
+    /** Ids are short and plain. Anything else is refused before it reaches a query or the audit row. */
+    private static final java.util.regex.Pattern PATIENT_ID = java.util.regex.Pattern.compile("[A-Za-z0-9._:-]{1,64}");
+
     private final TenantScopedExecutor tenantExecutor;
     private final PatientSummaryService patientSummaryService;
     private final PatientDataService patientDataService;
     private final AuditQueryService auditQueryService;
     private final AccessAuditor auditor;
+    private final AgentAccessPolicy agentPolicy;
+    private final AgentQuota quota;
 
     public PatientSummary getSummary(
             ClinicalAccessContext context,
@@ -82,11 +90,16 @@ public class SecuredPatientQueryService {
             Supplier<T> read) {
 
         try {
-            T result = tenantExecutor.execute(context.principal(), read);
+            requireWellFormed(patientId);
+            quota.acquire(context.principal());
+            T result = tenantExecutor.execute(context.principal(), () -> {
+                agentPolicy.requireActive(context.principal());
+                return read.get();
+            });
             // Must succeed before the data leaves; failure here fails the request.
             auditor.allowed(context, patientId, category);
             return result;
-        } catch (PatientAccessDeniedException | ClinicalAccessDeniedException ex) {
+        } catch (PatientAccessDeniedException | ClinicalAccessDeniedException | RateLimitExceededException ex) {
             auditor.denied(context, patientId, category);
             throw ex;
         } catch (AuditUnavailableException ex) {
@@ -98,6 +111,15 @@ public class SecuredPatientQueryService {
             // AI model, is a fixed message: database errors can echo data.
             LOG.error("request_failed category={}", category, ex);
             throw new RequestFailedException();
+        }
+    }
+
+    private static void requireWellFormed(String patientId) {
+        if (NO_PATIENT.equals(patientId)) {
+            return;
+        }
+        if (patientId == null || !PATIENT_ID.matcher(patientId).matches()) {
+            throw new PatientAccessDeniedException();
         }
     }
 }

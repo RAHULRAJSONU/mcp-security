@@ -86,7 +86,9 @@ public class AccessAuditor {
                 category.name(),
                 outcome.name(),
                 breakGlass,
-                breakGlass ? justification(context) : null);
+                breakGlass ? justification(context) : null,
+                context.principal().clientId() == null
+                        ? null : truncate(context.principal().clientId(), MAX_ID));
 
         // Own transaction scoped to the caller's tenant, so a denied or failed
         // request is still recorded and the row satisfies the tenant policy.

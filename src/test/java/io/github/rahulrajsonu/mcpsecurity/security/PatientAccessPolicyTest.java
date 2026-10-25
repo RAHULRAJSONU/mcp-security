@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import io.github.rahulrajsonu.mcpsecurity.config.BreakGlassProperties;
 import io.github.rahulrajsonu.mcpsecurity.exception.PatientAccessDeniedException;
 import io.github.rahulrajsonu.mcpsecurity.persistence.repository.PatientAssignmentRepository;
 import java.util.Set;
@@ -144,5 +145,42 @@ class PatientAccessPolicyTest {
                     .as(purpose.name())
                     .isInstanceOf(PatientAccessDeniedException.class);
         }
+    }
+
+    // ---- break-glass step-up ----
+
+    private static final String STEP_UP = "urn:healthcare:acr:step-up";
+
+    private PatientAccessPolicy withStepUp() {
+        return new PatientAccessPolicy(assignments, new BreakGlassProperties(STEP_UP));
+    }
+
+    private static ClinicalPrincipal emergencyPrincipal(String acr) {
+        return new ClinicalPrincipal("doctor-101", "hospital-A",
+                Set.of("patient.read", "patient.break_glass"), "healthcare-mcp-client", acr);
+    }
+
+    @Test
+    void emergencyNeedsTheStepUpClaimWhenRequired() {
+        assertThatCode(() -> withStepUp().requireReadAccess(
+                ctx(emergencyPrincipal(STEP_UP), AccessPurpose.EMERGENCY, JUSTIFICATION), "patient-500"))
+                .doesNotThrowAnyException();
+
+        assertThatThrownBy(() -> withStepUp().requireReadAccess(
+                ctx(emergencyPrincipal(null), AccessPurpose.EMERGENCY, JUSTIFICATION), "patient-500"))
+                .isInstanceOf(PatientAccessDeniedException.class);
+
+        assertThatThrownBy(() -> withStepUp().requireReadAccess(
+                ctx(emergencyPrincipal("urn:something:else"), AccessPurpose.EMERGENCY, JUSTIFICATION), "patient-500"))
+                .isInstanceOf(PatientAccessDeniedException.class);
+    }
+
+    @Test
+    void stepUpDoesNotAffectTreatment() {
+        when(assignments.hasActiveAssignment("hospital-A", "doctor-101", "patient-400")).thenReturn(true);
+
+        assertThatCode(() -> withStepUp().requireReadAccess(
+                ctx(emergencyPrincipal(null), AccessPurpose.TREATMENT, null), "patient-400"))
+                .doesNotThrowAnyException();
     }
 }

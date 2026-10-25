@@ -67,7 +67,7 @@ class PhiLogLeakIT extends AbstractPostgresIT {
 
     private static void loginAs(String subject, String scopes) {
         Jwt jwt = Jwt.withTokenValue("test").header("alg", "none").subject(subject)
-                .claim("tenant_id", "hospital-A").claim("scope", scopes)
+                .claim("tenant_id", "hospital-A").claim("scope", scopes).claim("azp", "healthcare-mcp-client")
                 .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(60)).build();
         SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt, List.of()));
     }
