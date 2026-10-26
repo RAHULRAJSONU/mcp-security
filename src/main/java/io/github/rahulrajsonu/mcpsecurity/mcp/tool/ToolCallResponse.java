@@ -24,6 +24,8 @@ public record ToolCallResponse(String error, String message, boolean retryable) 
             new ToolCallResponse("unauthenticated", "Authentication required", false);
     public static final ToolCallResponse RATE_LIMITED =
             new ToolCallResponse("rate_limited", "Too many requests; wait and retry later", true);
+    public static final ToolCallResponse SERVER_BUSY =
+            new ToolCallResponse("server_busy", "Server is busy; retry shortly", true);
     public static final ToolCallResponse REQUEST_FAILED =
             new ToolCallResponse("request_failed", "Request could not be completed", true);
 
@@ -40,6 +42,7 @@ public record ToolCallResponse(String error, String message, boolean retryable) 
             "Missing required subject claim", UNAUTHENTICATED,
             "Missing required tenant claim", UNAUTHENTICATED,
             "Too many requests", RATE_LIMITED,
+            "Server busy", SERVER_BUSY,
             "Request could not be completed", REQUEST_FAILED);
 
     /** The sanitized response for the text the framework produced for a failed call. */

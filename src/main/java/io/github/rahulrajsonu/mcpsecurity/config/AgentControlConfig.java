@@ -4,6 +4,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@EnableConfigurationProperties({AgentControlProperties.class, BreakGlassProperties.class})
+@EnableConfigurationProperties({AgentControlProperties.class, BreakGlassProperties.class, ConcurrencyProperties.class})
 public class AgentControlConfig {
 }

@@ -8,6 +8,7 @@ import io.github.bucket4j.TimeMeter;
 import io.github.rahulrajsonu.mcpsecurity.config.AgentControlProperties;
 import io.github.rahulrajsonu.mcpsecurity.exception.RateLimitExceededException;
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.binder.cache.CaffeineCacheMetrics;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -41,7 +42,9 @@ public class AgentQuota {
                 .maximumSize(props.maxTrackedKeys())
                 .expireAfterAccess(Duration.ofHours(25))
                 .ticker(ticker)
+                .recordStats()
                 .build();
+        CaffeineCacheMetrics.monitor(meters, this.buckets, "agent_quota");
         this.rejected = Counter.builder("mcp.agent.quota.rejected").register(meters);
     }
 

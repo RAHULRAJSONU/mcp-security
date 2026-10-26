@@ -135,4 +135,45 @@ class AgentRegistryIT extends AbstractPostgresIT {
             assertThat(event.outcome()).isEqualTo("DENIED");
         });
     }
+
+    @Test
+    void aChainOfAgentsIsRecordedOutermostFirst() {
+        Jwt jwt = Jwt.withTokenValue("test")
+                .header("alg", "none")
+                .subject("doctor-101")
+                .claim("tenant_id", "hospital-A")
+                .claim("scope", "patient.read")
+                .claim("azp", "healthcare-mcp-client")
+                // RFC 8693: agent-a is acting for the user, having been called by agent-b.
+                .claim("act", java.util.Map.of("sub", "agent-a", "act", java.util.Map.of("sub", "agent-b")))
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(60))
+                .build();
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt, List.of()));
+        patientTools.getPatientSummary("patient-400", null, null);
+
+        loginAs("compliance-1", "hospital-A", "audit.read", "healthcare-mcp-client");
+        @SuppressWarnings("unchecked")
+        List<AccessEvent> events = (List<AccessEvent>) items(auditTools.getAccessHistory("patient-400", 200));
+
+        assertThat(events).anySatisfy(event -> {
+            assertThat(event.subject()).isEqualTo("doctor-101");
+            assertThat(event.actor()).isEqualTo("agent-a>agent-b");
+        });
+    }
+
+    @Test
+    void aDirectCallHasNoActor() {
+        loginAs("doctor-101", "hospital-A", "patient.read", "healthcare-mcp-client");
+        patientTools.getPatientSummary("patient-400", null, null);
+
+        loginAs("compliance-1", "hospital-A", "audit.read", "healthcare-mcp-client");
+        @SuppressWarnings("unchecked")
+        List<AccessEvent> events = (List<AccessEvent>) items(auditTools.getAccessHistory("patient-400", 200));
+
+        assertThat(events).anySatisfy(event -> {
+            assertThat(event.subject()).isEqualTo("doctor-101");
+            assertThat(event.actor()).isNull();
+        });
+    }
 }

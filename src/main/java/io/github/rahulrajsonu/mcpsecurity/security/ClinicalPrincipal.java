@@ -8,7 +8,8 @@ public record ClinicalPrincipal(
         String tenantId,
         Set<String> scopes,
         String clientId,
-        String authContext
+        String authContext,
+        String actor
 ) {
     public ClinicalPrincipal {
         Objects.requireNonNull(subject, "subject");
@@ -32,11 +33,15 @@ public record ClinicalPrincipal(
     }
 
     public ClinicalPrincipal(String subject, String tenantId, Set<String> scopes) {
-        this(subject, tenantId, scopes, null, null);
+        this(subject, tenantId, scopes, null, null, null);
     }
 
     public ClinicalPrincipal(String subject, String tenantId, Set<String> scopes, String clientId) {
-        this(subject, tenantId, scopes, clientId, null);
+        this(subject, tenantId, scopes, clientId, null, null);
+    }
+
+    public ClinicalPrincipal(String subject, String tenantId, Set<String> scopes, String clientId, String authContext) {
+        this(subject, tenantId, scopes, clientId, authContext, null);
     }
 
     public boolean hasScope(String scope) {

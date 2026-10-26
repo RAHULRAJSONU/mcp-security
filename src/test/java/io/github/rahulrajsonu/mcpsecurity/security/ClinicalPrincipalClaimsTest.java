@@ -88,4 +88,40 @@ class ClinicalPrincipalClaimsTest {
         assertThat(principal.hasScope(null)).isFalse();
         assertThat(principal.hasScope(" ")).isFalse();
     }
+
+    @Test
+    void theActorChainIsReadOutermostFirst() {
+        Map<String, Object> act = Map.of("sub", "agent-a", "act", Map.of("sub", "agent-b", "act", Map.of("sub", "agent-c")));
+
+        assertThat(resolver.resolve(token(Map.of("act", act))).actor()).isEqualTo("agent-a>agent-b>agent-c");
+    }
+
+    @Test
+    void aSingleActorIsJustItsName() {
+        assertThat(resolver.resolve(token(Map.of("act", Map.of("sub", "agent-a")))).actor()).isEqualTo("agent-a");
+    }
+
+    @Test
+    void noActClaimMeansNoActor() {
+        assertThat(resolver.resolve(token(Map.of())).actor()).isNull();
+    }
+
+    @Test
+    void malformedActClaimsAreIgnoredNotTrusted() {
+        assertThat(ClinicalPrincipalResolver.actorChain("agent-a")).isNull();
+        assertThat(ClinicalPrincipalResolver.actorChain(Map.of("sub", 42))).isNull();
+        assertThat(ClinicalPrincipalResolver.actorChain(Map.of("sub", " "))).isNull();
+        assertThat(ClinicalPrincipalResolver.actorChain(Map.of("foo", "bar"))).isNull();
+    }
+
+    @Test
+    void aDeeplyNestedChainIsCutOff() {
+        Map<String, Object> chain = Map.of("sub", "a0");
+        for (int i = 1; i < 50; i++) {
+            chain = Map.of("sub", "a" + i, "act", chain);
+        }
+
+        // Only the first five hops are kept: a hostile token cannot make this unbounded.
+        assertThat(ClinicalPrincipalResolver.actorChain(chain).split(">")).hasSize(5);
+    }
 }

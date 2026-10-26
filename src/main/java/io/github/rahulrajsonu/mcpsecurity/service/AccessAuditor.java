@@ -32,19 +32,30 @@ public class AccessAuditor {
     private static final Logger LOG = LoggerFactory.getLogger(AccessAuditor.class);
     private static final int MAX_JUSTIFICATION = 500;
     private static final int MAX_ID = 128;
+    private static final int MAX_ACTOR = 256;
 
     private final AccessAuditLogger logger;
     private final AccessEventRepository events;
     private final TenantScopedExecutor tenantExecutor;
     private final Clock clock;
 
-    public void allowed(ClinicalAccessContext context, String patientId, DataCategory category) {
+    /**
+     * Writes the ALLOWED event in the transaction already open for the read, so the
+     * data and its audit record commit together or not at all. That is "no audit, no
+     * data" without a second transaction, and it halves the connections a call needs.
+     * Must be called inside {@link TenantScopedExecutor#execute}.
+     */
+    public void appendAllowed(ClinicalAccessContext context, String patientId, DataCategory category) {
         try {
-            store(context, patientId, category, Outcome.ALLOWED);
+            events.append(context.principal().tenantId(), event(context, patientId, category, Outcome.ALLOWED));
         } catch (RuntimeException ex) {
             LOG.error("audit_write_failed outcome=ALLOWED; access refused", ex);
             throw new AuditUnavailableException(ex);
         }
+    }
+
+    /** The log line and metric for an allowed access. Call after the transaction has committed. */
+    public void logAllowed(ClinicalAccessContext context, String patientId, DataCategory category) {
         logger.record(context, patientId, category, Outcome.ALLOWED);
     }
 
@@ -76,9 +87,25 @@ public class AccessAuditor {
             DataCategory category,
             Outcome outcome) {
 
+        AccessEvent event = event(context, patientId, category, outcome);
+
+        // Own transaction scoped to the caller's tenant, so a denied or failed
+        // request is still recorded and the row satisfies the tenant policy.
+        tenantExecutor.execute(context.principal(), () -> {
+            events.append(context.principal().tenantId(), event);
+            return null;
+        });
+    }
+
+    private AccessEvent event(
+            ClinicalAccessContext context,
+            String patientId,
+            DataCategory category,
+            Outcome outcome) {
+
         boolean breakGlass = context.purpose() == AccessPurpose.EMERGENCY;
 
-        AccessEvent event = new AccessEvent(
+        return new AccessEvent(
                 Instant.now(clock),
                 truncate(context.principal().subject(), MAX_ID),
                 truncate(patientId, MAX_ID),
@@ -88,14 +115,9 @@ public class AccessAuditor {
                 breakGlass,
                 breakGlass ? justification(context) : null,
                 context.principal().clientId() == null
-                        ? null : truncate(context.principal().clientId(), MAX_ID));
-
-        // Own transaction scoped to the caller's tenant, so a denied or failed
-        // request is still recorded and the row satisfies the tenant policy.
-        tenantExecutor.execute(context.principal(), () -> {
-            events.append(context.principal().tenantId(), event);
-            return null;
-        });
+                        ? null : truncate(context.principal().clientId(), MAX_ID),
+                context.principal().actor() == null
+                        ? null : truncate(context.principal().actor(), MAX_ACTOR));
     }
 
     private static String justification(ClinicalAccessContext context) {

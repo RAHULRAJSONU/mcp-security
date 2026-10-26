@@ -140,4 +140,17 @@ class ToolResultsTest {
         assertThat(items(result)).isEmpty();
         assertThat(text(result)).isEqualTo("[]");
     }
+
+    @Test
+    void aBusyServerIsAFastRetryableRefusal() {
+        CallToolResult result = results.call(() -> {
+            throw new io.github.rahulrajsonu.mcpsecurity.exception.ServerBusyException();
+        });
+
+        assertFailed(result, "server_busy");
+        assertThat(result.structuredContent()).isEqualTo(Map.of(
+                "error", "server_busy",
+                "message", "Server is busy; retry shortly",
+                "retryable", true));
+    }
 }

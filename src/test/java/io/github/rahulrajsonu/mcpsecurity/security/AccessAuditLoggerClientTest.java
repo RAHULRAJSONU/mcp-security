@@ -70,4 +70,24 @@ class AccessAuditLoggerClientTest {
                 .extracting(tag -> tag.getKey())
                 .doesNotContain("client", "client_id", "clientId"));
     }
+
+    @Test
+    void theLineNamesTheActorChainAndSanitizesIt() {
+        ClinicalAccessContext context = new ClinicalAccessContext(
+                new ClinicalPrincipal("doctor-101", "hospital-A", Set.of("patient.read"), "c", null,
+                        "agent-a>evil\nINFO forged"),
+                AccessPurpose.TREATMENT);
+
+        audit.record(context, "patient-400", AccessAuditLogger.Outcome.ALLOWED);
+
+        assertThat(appender.list).hasSize(1);
+        assertThat(appender.list.getFirst().getFormattedMessage()).contains("actor=agent-a>evil").doesNotContain("\n");
+    }
+
+    @Test
+    void noActorIsShownAsADash() {
+        audit.record(ctx("c"), "patient-400", AccessAuditLogger.Outcome.ALLOWED);
+
+        assertThat(appender.list.getFirst().getFormattedMessage()).contains("actor=-");
+    }
 }

@@ -26,6 +26,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Only the JWT decoder is faked (there is no identity provider in the test).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@org.springframework.context.annotation.Import(McpHttpIT.ThreadProbeConfig.class)
 class McpHttpIT extends AbstractPostgresIT {
 
     private static final String PROTOCOL = "2025-06-18";
@@ -200,5 +201,98 @@ class McpHttpIT extends AbstractPostgresIT {
         boolean protocolError = reply.has("error");
         boolean toolError = reply.has("result") && reply.get("result").path("isError").asBoolean(false);
         assertThat(protocolError || toolError).isTrue();
+    }
+
+    // ---- observability ----
+
+    @Value("${local.management.port}")
+    int managementPort;
+
+    private String scrape() throws Exception {
+        return http.send(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + managementPort + "/actuator/prometheus")).GET().build(),
+                HttpResponse.BodyHandlers.ofString()).body();
+    }
+
+    @Test
+    void everyResponseCarriesARequestId() throws Exception {
+        HttpResponse<String> refused = post(null, null, "{}");
+        assertThat(refused.statusCode()).isEqualTo(401);
+        assertThat(refused.headers().firstValue("X-Request-ID")).isPresent();
+
+        HttpResponse<String> kept = http.send(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/mcp"))
+                        .header("X-Request-ID", "trace-me-0001").POST(HttpRequest.BodyPublishers.ofString("{}")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(kept.headers().firstValue("X-Request-ID")).hasValue("trace-me-0001");
+    }
+
+    @Test
+    void toolCallsAreCountedByOutcomeAndCarryNoIdentifiers() throws Exception {
+        String ok = openSession("doctor-101");
+        call("doctor-101", ok, "listMyPatients", Map.of());
+        String denied = openSession("suspended");
+        call("suspended", denied, "listMyPatients", Map.of());
+
+        String metrics = scrape();
+
+        assertThat(metrics).containsPattern("mcp_tool_calls_total\\{[^}]*outcome=\"ok\"[^}]*tool=\"listMyPatients\"");
+        assertThat(metrics).containsPattern("mcp_tool_calls_total\\{[^}]*outcome=\"access_denied\"[^}]*tool=\"listMyPatients\"");
+        assertThat(metrics).contains("mcp_tool_duration_seconds_bucket");
+        // The Caffeine caches report their hits, so the registry cache time can be tuned.
+        assertThat(metrics).containsPattern("cache_gets_total\\{[^}]*cache=\"agent_registry\"");
+        assertThat(metrics).containsPattern("cache_size\\{[^}]*cache=\"agent_quota\"");
+        assertThat(metrics).containsPattern("mcp_agent_denied_total\\{[^}]*reason=\"not_approved\"");
+        // Metrics go to a shared system: no user, client or patient identifiers.
+        assertThat(metrics).doesNotContain("doctor-101").doesNotContain("suspended-client").doesNotContain("patient-400");
+    }
+
+    // ---- scalability: stateless and virtual threads ----
+
+    /** Records what kind of thread handled each /mcp request. */
+    static class ThreadProbe {
+        static final java.util.concurrent.atomic.AtomicBoolean SAW_REQUEST = new java.util.concurrent.atomic.AtomicBoolean();
+        static final java.util.concurrent.atomic.AtomicBoolean VIRTUAL = new java.util.concurrent.atomic.AtomicBoolean(true);
+    }
+
+    @org.springframework.boot.test.context.TestConfiguration
+    static class ThreadProbeConfig {
+        @org.springframework.context.annotation.Bean
+        jakarta.servlet.Filter threadProbe() {
+            return (request, response, chain) -> {
+                if (request instanceof jakarta.servlet.http.HttpServletRequest http
+                        && http.getRequestURI().startsWith("/mcp")) {
+                    ThreadProbe.SAW_REQUEST.set(true);
+                    if (!Thread.currentThread().isVirtual()) {
+                        ThreadProbe.VIRTUAL.set(false);
+                    }
+                }
+                chain.doFilter(request, response);
+            };
+        }
+    }
+
+    @Test
+    void thereIsNoSessionSoAnyInstanceCouldAnswerAnyCall() throws Exception {
+        HttpResponse<String> init = post("doctor-101", null, """
+                {"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+                  "protocolVersion":"%s","capabilities":{},
+                  "clientInfo":{"name":"integration-test","version":"1"}}}
+                """.formatted(PROTOCOL));
+
+        assertThat(init.statusCode()).isEqualTo(200);
+        assertThat(init.headers().firstValue("Mcp-Session-Id")).isEmpty();
+
+        // A call with no handshake and no session works: nothing is pinned to this instance.
+        JsonNode result = call("doctor-101", null, "listMyPatients", Map.of());
+        assertThat(result.path("isError").asBoolean(false)).isFalse();
+    }
+
+    @Test
+    void requestsAreHandledOnVirtualThreads() throws Exception {
+        call("doctor-101", null, "listMyPatients", Map.of());
+
+        assertThat(ThreadProbe.SAW_REQUEST).isTrue();
+        assertThat(ThreadProbe.VIRTUAL).as("every /mcp request ran on a virtual thread").isTrue();
     }
 }

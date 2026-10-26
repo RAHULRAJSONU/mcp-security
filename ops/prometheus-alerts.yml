@@ -1,0 +1,145 @@
+# Prometheus alert rules for the clinical MCP server.
+# Scrape the management port (8081), never the public listener.
+#
+# Thresholds are starting points. Tune them against a week of real traffic
+# before paging anyone, and keep the break-glass rules loud: that is the point of them.
+groups:
+  - name: clinical-access
+    rules:
+      - alert: BreakGlassUsed
+        expr: sum(increase(clinical_patient_access_total{purpose="EMERGENCY", outcome="ALLOWED"}[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Emergency (break-glass) access was used
+          description: >
+            Review the justification in access_events (tool listBreakGlassEvents).
+            Break-glass should be rare and every use reviewed by compliance.
+
+      - alert: BreakGlassRefusedRepeatedly
+        expr: sum(increase(clinical_patient_access_total{purpose="EMERGENCY", outcome="DENIED"}[10m])) > 3
+        labels:
+          severity: warning
+        annotations:
+          summary: Repeated refused break-glass attempts
+          description: >
+            Someone, or an agent, is trying to use emergency access without the scope,
+            the step-up, or a valid justification.
+
+      - alert: AccessDenialSpike
+        expr: >
+          sum(rate(clinical_patient_access_total{outcome="DENIED"}[5m]))
+            / clamp_min(sum(rate(clinical_patient_access_total[5m])), 0.01) > 0.3
+          and sum(rate(clinical_patient_access_total[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 30% of patient access attempts are being refused
+          description: Could be a probing agent, a broken client, or a bad role change.
+
+      - alert: AccessErrors
+        expr: sum(increase(clinical_patient_access_total{outcome="ERROR"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Patient access requests are failing with errors
+          description: >
+            Includes audit-store failures. The service fails closed ("no audit, no data"),
+            so users are being refused. Check the database and the logs for audit_write_failed.
+
+  - name: agents
+    rules:
+      - alert: UnknownOrUnapprovedAgents
+        expr: sum(increase(mcp_agent_denied_total{reason=~"unknown|not_approved"}[15m])) > 5
+        labels:
+          severity: warning
+        annotations:
+          summary: Agents that are not registered or approved keep calling
+          description: >
+            See the agent_denied lines on logger AUDIT.agent-access for tenant, user and client.
+            A suspended agent still running, or a client that was never registered.
+
+      - alert: ExpiredAgents
+        expr: sum(increase(mcp_agent_denied_total{reason="expired"}[1h])) > 0
+        labels:
+          severity: info
+        annotations:
+          summary: An agent is calling after its approval expired
+          description: Renew the registration (docs/agent-registry.md) if it should still run.
+
+      - alert: AgentQuotaRejections
+        expr: sum(increase(mcp_agent_quota_rejected_total[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: An agent hit its call quota
+          description: A runaway loop, or bulk reading. Check which user and client in the audit trail.
+
+  - name: transport
+    rules:
+      - alert: RateLimitRejections
+        expr: sum by (layer) (rate(mcp_ratelimit_rejected_total[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rate limiter is rejecting requests (layer {{ $labels.layer }})"
+          description: A flood of requests from one address or token.
+
+  - name: capacity
+    rules:
+      - alert: LoadSheddingActive
+        expr: sum(rate(mcp_bulkhead_rejected_total[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: The server is refusing calls with server_busy
+          description: >
+            Demand exceeds what the database pool can serve. Add replicas, raise DB_POOL_SIZE
+            and MAX_IN_FLIGHT_CALLS together, or find the slow query. See docs/scaling.md.
+
+      - alert: InFlightNearLimit
+        expr: max(mcp_bulkhead_in_flight) >= 18
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: Calls in flight are close to MAX_IN_FLIGHT_CALLS
+          description: Adjust the threshold if MAX_IN_FLIGHT_CALLS is not the default of 20.
+
+      - alert: DatabasePoolSaturated
+        expr: hikaricp_connections_pending > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Callers are waiting for a database connection
+          description: >
+            Should stay at zero while load shedding is sized correctly. If it does not, MAX_IN_FLIGHT_CALLS
+            is too high for DB_POOL_SIZE (see the concurrency_misconfigured log line).
+
+  - name: tool-health
+    rules:
+      - alert: ToolFailures
+        expr: >
+          sum(rate(mcp_tool_calls_total{outcome="request_failed"}[5m]))
+            / clamp_min(sum(rate(mcp_tool_calls_total[5m])), 0.01) > 0.05
+          and sum(rate(mcp_tool_calls_total[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: More than 5% of tool calls fail with request_failed
+          description: Unexpected errors or an unavailable audit store. Use the request_id in the logs.
+
+      - alert: ToolLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(mcp_tool_duration_seconds_bucket[5m]))) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: p95 tool latency is over 2 seconds
+          description: Check the database pool and slow queries.

@@ -4,6 +4,7 @@ import io.github.rahulrajsonu.mcpsecurity.exception.AuditUnavailableException;
 import io.github.rahulrajsonu.mcpsecurity.exception.ClinicalAccessDeniedException;
 import io.github.rahulrajsonu.mcpsecurity.exception.PatientAccessDeniedException;
 import io.github.rahulrajsonu.mcpsecurity.exception.RateLimitExceededException;
+import io.github.rahulrajsonu.mcpsecurity.exception.ServerBusyException;
 import io.github.rahulrajsonu.mcpsecurity.exception.RequestFailedException;
 import io.github.rahulrajsonu.mcpsecurity.mcp.domain.AccessEvent;
 import io.github.rahulrajsonu.mcpsecurity.mcp.domain.ClinicalNote;
@@ -12,6 +13,7 @@ import io.github.rahulrajsonu.mcpsecurity.mcp.domain.PatientSummary;
 import io.github.rahulrajsonu.mcpsecurity.mcp.domain.RosterEntry;
 import io.github.rahulrajsonu.mcpsecurity.security.AgentAccessPolicy;
 import io.github.rahulrajsonu.mcpsecurity.security.AgentQuota;
+import io.github.rahulrajsonu.mcpsecurity.security.CallBulkhead;
 import io.github.rahulrajsonu.mcpsecurity.security.ClinicalAccessContext;
 import io.github.rahulrajsonu.mcpsecurity.security.DataCategory;
 import io.github.rahulrajsonu.mcpsecurity.security.TenantScopedExecutor;
@@ -46,6 +48,7 @@ public class SecuredPatientQueryService {
     private final AccessAuditor auditor;
     private final AgentAccessPolicy agentPolicy;
     private final AgentQuota quota;
+    private final CallBulkhead bulkhead;
 
     public PatientSummary getSummary(
             ClinicalAccessContext context,
@@ -92,15 +95,22 @@ public class SecuredPatientQueryService {
         try {
             requireWellFormed(patientId);
             quota.acquire(context.principal());
-            T result = tenantExecutor.execute(context.principal(), () -> {
+            // One transaction: the agent check, the read and the ALLOWED audit row. If the
+            // audit row cannot be written the transaction rolls back and no data leaves.
+            T result = bulkhead.run(() -> tenantExecutor.execute(context.principal(), () -> {
                 agentPolicy.requireActive(context.principal());
-                return read.get();
-            });
-            // Must succeed before the data leaves; failure here fails the request.
-            auditor.allowed(context, patientId, category);
+                T value = read.get();
+                auditor.appendAllowed(context, patientId, category);
+                return value;
+            }));
+            auditor.logAllowed(context, patientId, category);
             return result;
         } catch (PatientAccessDeniedException | ClinicalAccessDeniedException | RateLimitExceededException ex) {
             auditor.denied(context, patientId, category);
+            throw ex;
+        } catch (ServerBusyException ex) {
+            // Nothing ran and no decision was made, so there is nothing to audit. Writing
+            // an audit row would also need a connection, which is what is in short supply.
             throw ex;
         } catch (AuditUnavailableException ex) {
             auditor.failed(context, patientId, category);

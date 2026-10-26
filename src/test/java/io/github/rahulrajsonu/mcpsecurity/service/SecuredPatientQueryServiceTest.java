@@ -14,7 +14,10 @@ import io.github.rahulrajsonu.mcpsecurity.exception.RateLimitExceededException;
 import io.github.rahulrajsonu.mcpsecurity.exception.RequestFailedException;
 import io.github.rahulrajsonu.mcpsecurity.security.AccessPurpose;
 import io.github.rahulrajsonu.mcpsecurity.security.AgentAccessPolicy;
+import io.github.rahulrajsonu.mcpsecurity.config.ConcurrencyProperties;
+import io.github.rahulrajsonu.mcpsecurity.exception.ServerBusyException;
 import io.github.rahulrajsonu.mcpsecurity.security.AgentQuota;
+import io.github.rahulrajsonu.mcpsecurity.security.CallBulkhead;
 import io.github.rahulrajsonu.mcpsecurity.security.ClinicalAccessContext;
 import io.github.rahulrajsonu.mcpsecurity.security.ClinicalPrincipal;
 import io.github.rahulrajsonu.mcpsecurity.security.DataCategory;
@@ -33,9 +36,12 @@ class SecuredPatientQueryServiceTest {
     private final AccessAuditor auditor = mock(AccessAuditor.class);
     private final AgentAccessPolicy agentPolicy = mock(AgentAccessPolicy.class);
     private final AgentQuota quota = mock(AgentQuota.class);
+    private final CallBulkhead bulkhead = new CallBulkhead(
+            new ConcurrencyProperties(100, java.time.Duration.ofMillis(100)),
+            new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
 
     private final SecuredPatientQueryService service =
-            new SecuredPatientQueryService(executor, summaries, data, audit, auditor, agentPolicy, quota);
+            new SecuredPatientQueryService(executor, summaries, data, audit, auditor, agentPolicy, quota, bulkhead);
 
     private final ClinicalAccessContext context = new ClinicalAccessContext(
             new ClinicalPrincipal("doctor-101", "hospital-A", Set.of("patient.read", "medication.read")),
@@ -77,7 +83,8 @@ class SecuredPatientQueryServiceTest {
 
         assertThat(service.getMedications(context, "patient-400")).isEmpty();
 
-        verify(auditor).allowed(context, "patient-400", DataCategory.MEDICATIONS);
+        verify(auditor).appendAllowed(context, "patient-400", DataCategory.MEDICATIONS);
+        verify(auditor).logAllowed(context, "patient-400", DataCategory.MEDICATIONS);
     }
 
     @Test
@@ -113,5 +120,22 @@ class SecuredPatientQueryServiceTest {
 
         verify(data, never()).getMedications(any(), any());
         verify(auditor).denied(context, "patient-400", DataCategory.MEDICATIONS);
+    }
+
+    @Test
+    void aShedCallRunsNothingAndWritesNoAuditRow() {
+        CallBulkhead full = mock(CallBulkhead.class);
+        when(full.run(any())).thenThrow(new ServerBusyException());
+        SecuredPatientQueryService busy = new SecuredPatientQueryService(
+                executor, summaries, data, audit, auditor, agentPolicy, quota, full);
+
+        assertThatThrownBy(() -> busy.getMedications(context, "patient-400"))
+                .isInstanceOf(ServerBusyException.class);
+
+        // No read, and no audit: nothing was decided, and an audit write needs the connection that is scarce.
+        verify(data, never()).getMedications(any(), any());
+        verify(auditor, never()).denied(any(), any(), any());
+        verify(auditor, never()).failed(any(), any(), any());
+        verify(auditor, never()).appendAllowed(any(), any(), any());
     }
 }

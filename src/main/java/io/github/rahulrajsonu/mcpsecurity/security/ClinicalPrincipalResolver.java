@@ -29,6 +29,7 @@ public class ClinicalPrincipalResolver {
         String clientId = jwt.getClaimAsString("azp");
         // Authentication context class: set by the identity provider after a human step-up.
         String authContext = jwt.getClaimAsString("acr");
+        String actor = actorChain(jwt.getClaim("act"));
 
         if (subject == null || subject.isBlank()) {
             throw new AccessDeniedException(
@@ -53,7 +54,30 @@ public class ClinicalPrincipalResolver {
                 tenantId,
                 scopes,
                 clientId,
-                authContext
+                authContext,
+                actor
         );
+    }
+
+    private static final int MAX_ACTOR_DEPTH = 5;
+
+    /**
+     * RFC 8693 delegation: {@code act} names the party acting for the subject, and a nested
+     * {@code act} the one before it. Returned outermost first ("agent-a>agent-b"), or null
+     * when there is none. Recorded for the audit trail only; it grants nothing.
+     */
+    static String actorChain(Object act) {
+        StringBuilder chain = new StringBuilder();
+        Object current = act;
+        for (int depth = 0; depth < MAX_ACTOR_DEPTH && current instanceof java.util.Map<?, ?> claim; depth++) {
+            if (claim.get("sub") instanceof String sub && !sub.isBlank()) {
+                if (!chain.isEmpty()) {
+                    chain.append('>');
+                }
+                chain.append(sub.strip());
+            }
+            current = claim.get("act");
+        }
+        return chain.isEmpty() ? null : chain.toString();
     }
 }

@@ -8,6 +8,7 @@ import io.github.bucket4j.ConsumptionProbe;
 import io.github.bucket4j.TimeMeter;
 import io.github.rahulrajsonu.mcpsecurity.config.RateLimitProperties;
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.binder.cache.CaffeineCacheMetrics;
 import io.micrometer.core.instrument.MeterRegistry;
 
 import java.time.Duration;
@@ -27,6 +28,8 @@ public class RateLimiter {
         this.timeMeter=timeMeter;
         this.byIp= newCache(props, ticker);
         this.byToken = newCache(props, ticker);
+        CaffeineCacheMetrics.monitor(meters, this.byIp, "ratelimit_ip");
+        CaffeineCacheMetrics.monitor(meters, this.byToken, "ratelimit_token");
         this.ipRejected = Counter.builder("mcp.ratelimit.rejected").tag("layer","ip").register(meters);
         this.tokenRejected = Counter.builder("mcp.ratelimit.rejected").tag("layer", "token").register(meters);
     }
@@ -36,6 +39,7 @@ public class RateLimiter {
                 .maximumSize(p.maxTrackedKeys())
                 .expireAfterAccess(p.idleEviction())
                 .ticker(ticker)
+                .recordStats()
                 .build();
     }
     private Bucket newBucket(int perMinute) {

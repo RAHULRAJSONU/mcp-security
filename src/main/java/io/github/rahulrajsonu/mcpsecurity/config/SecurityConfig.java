@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import io.github.rahulrajsonu.mcpsecurity.security.CertificateBoundTokenFilter;
 import io.github.rahulrajsonu.mcpsecurity.security.RateLimitFilter;
 import io.github.rahulrajsonu.mcpsecurity.security.RateLimiter;
+import io.github.rahulrajsonu.mcpsecurity.security.RequestIdFilter;
 import io.github.rahulrajsonu.mcpsecurity.security.RequireHttpsFilter;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
@@ -40,6 +41,9 @@ public class SecurityConfig {
 
         // Refuse floods before any token parsing. Per address first, then per token.
         http.addFilterBefore(new RateLimitFilter(rateLimiter), BearerTokenAuthenticationFilter.class);
+
+        // First in line, so even a refused or rate-limited request has an id in the logs.
+        http.addFilterBefore(new RequestIdFilter(), RateLimitFilter.class);
 
         // With mutual TLS, tokens must be bound to the client certificate (RFC 8705).
         if (mtlsEnabled) {

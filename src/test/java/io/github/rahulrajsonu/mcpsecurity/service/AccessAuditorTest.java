@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -60,7 +61,7 @@ class AccessAuditorTest {
 
     @Test
     void allowedAccessStoresWhoActedAndWhichAgentDidIt() {
-        auditor.allowed(context("healthcare-mcp-client", AccessPurpose.TREATMENT, null),
+        auditor.appendAllowed(context("healthcare-mcp-client", AccessPurpose.TREATMENT, null),
                 "patient-400", DataCategory.MEDICATIONS);
 
         AccessEvent event = stored();
@@ -75,6 +76,21 @@ class AccessAuditorTest {
     }
 
     @Test
+    void allowedEventIsWrittenInTheCallersTransactionNotANewOne() {
+        auditor.appendAllowed(context("c", AccessPurpose.TREATMENT, null), "patient-400", DataCategory.PATIENT_SUMMARY);
+
+        verify(events).append(eq("hospital-A"), any());
+        verify(executor, never()).execute(any(), any());
+    }
+
+    @Test
+    void theAllowedLogLineIsASeparateStepAfterCommit() {
+        auditor.logAllowed(context("c", AccessPurpose.TREATMENT, null), "patient-400", DataCategory.PATIENT_SUMMARY);
+
+        verify(events, never()).append(any(), any());
+    }
+
+    @Test
     void aTokenWithoutAClientIsStoredWithoutOne() {
         auditor.denied(context(null, AccessPurpose.TREATMENT, null), "patient-400", DataCategory.PATIENT_SUMMARY);
 
@@ -83,7 +99,7 @@ class AccessAuditorTest {
 
     @Test
     void emergencyAccessKeepsTheTrimmedJustification() {
-        auditor.allowed(context("c", AccessPurpose.EMERGENCY, "  Unconscious patient in ED  "),
+        auditor.appendAllowed(context("c", AccessPurpose.EMERGENCY, "  Unconscious patient in ED  "),
                 "patient-500", DataCategory.MEDICATIONS);
 
         AccessEvent event = stored();
@@ -93,7 +109,7 @@ class AccessAuditorTest {
 
     @Test
     void justificationIsNeverStoredForRoutineAccess() {
-        auditor.allowed(context("c", AccessPurpose.TREATMENT, "should not be kept"),
+        auditor.appendAllowed(context("c", AccessPurpose.TREATMENT, "should not be kept"),
                 "patient-400", DataCategory.PATIENT_SUMMARY);
 
         assertThat(stored().justification()).isNull();
@@ -101,7 +117,7 @@ class AccessAuditorTest {
 
     @Test
     void longValuesAreTruncatedSoTheyFitTheColumns() {
-        auditor.allowed(context("c".repeat(300), AccessPurpose.EMERGENCY, "j".repeat(900)),
+        auditor.appendAllowed(context("c".repeat(300), AccessPurpose.EMERGENCY, "j".repeat(900)),
                 "p".repeat(300), DataCategory.MEDICATIONS);
 
         AccessEvent event = stored();
@@ -114,7 +130,7 @@ class AccessAuditorTest {
     void anAllowedAccessFailsWhenTheEventCannotBeStored() {
         doThrow(new IllegalStateException("audit store down")).when(events).append(any(), any());
 
-        assertThatThrownBy(() -> auditor.allowed(context("c", AccessPurpose.TREATMENT, null),
+        assertThatThrownBy(() -> auditor.appendAllowed(context("c", AccessPurpose.TREATMENT, null),
                 "patient-400", DataCategory.PATIENT_SUMMARY))
                 .isInstanceOf(AuditUnavailableException.class)
                 .hasMessage("Request could not be completed");
@@ -129,5 +145,23 @@ class AccessAuditorTest {
                 .doesNotThrowAnyException();
         assertThatCode(() -> auditor.failed(context, "patient-400", DataCategory.PATIENT_SUMMARY))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void theActorChainIsStoredWithTheEvent() {
+        ClinicalAccessContext context = new ClinicalAccessContext(
+                new ClinicalPrincipal("doctor-101", "hospital-A", Set.of("patient.read"), "c", null, "agent-a>agent-b"),
+                AccessPurpose.TREATMENT);
+
+        auditor.appendAllowed(context, "patient-400", DataCategory.PATIENT_SUMMARY);
+
+        assertThat(stored().actor()).isEqualTo("agent-a>agent-b");
+    }
+
+    @Test
+    void noActorIsStoredAsNull() {
+        auditor.appendAllowed(context("c", AccessPurpose.TREATMENT, null), "patient-400", DataCategory.PATIENT_SUMMARY);
+
+        assertThat(stored().actor()).isNull();
     }
 }
