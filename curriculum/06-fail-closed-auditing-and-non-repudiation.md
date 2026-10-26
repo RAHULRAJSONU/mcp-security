@@ -35,60 +35,74 @@ In healthcare and high-assurance security, this is unacceptable. Once PHI reache
 ### The Hardened Fail-Closed Pattern
 In this repository, auditing is **fail-closed**:
 ```
-✅ FAIL-CLOSED PATTERN: "NO AUDIT, NO DATA"
-[Tool Call] ──► [Read Patient from DB] ──► [Append Durable Audit Record to DB]
+✅ FAIL-CLOSED PATTERN: "NO AUDIT, NO DATA"   (one database transaction)
+[Tool Call] ──► [Agent check] ──► [Read Patient] ──► [Append Audit Row] ──► COMMIT
                                                           │
                        ┌──────────────────────────────────┴──────────────────────────────────┐
-                       ▼ SUCCESS                                                             ▼ FAILURE (Disk/Network error)
-             [Return PHI to Agent]                                                 [Throw AuditUnavailableException]
+                       ▼ COMMIT SUCCEEDS                                                     ▼ ANY STEP FAILS (Disk/Network error)
+             [Return PHI to Agent]                                                 [Transaction rolls back]
                                                                                    [ZERO Patient Data Returned]
 ```
 
+The read and its audit row are written **in the same transaction**. They commit together or not at all, so there is no window in which data was read but no record exists, and no record of a read that was never delivered. It also halves the connection checkouts and commits per call, which matters under load (see [Module 10](10-agent-controls-and-resilience.md)).
+
 ### The Code Implementation
-Inspect [`SecuredPatientQueryService.java`](file:///c:/ws/health-mcp-client/src/main/java/io/github/rahulrajsonu/mcpsecurity/service/SecuredPatientQueryService.java#L78-L95):
+Inspect [`SecuredPatientQueryService.java`](file:///c:/ws/health-mcp-client/src/main/java/io/github/rahulrajsonu/mcpsecurity/service/SecuredPatientQueryService.java), method `guarded`:
 
 ```java
-private <T> T guarded(
-        ClinicalAccessContext context,
-        String patientId,
-        DataCategory category,
-        Supplier<T> read) {
+requireWellFormed(patientId);              // reject malformed ids before any I/O
+quota.acquire(context.principal());        // per-agent quota (Module 10)
 
-    try {
-        // 1. Fetch data inside tenant-isolated transaction
-        T result = tenantExecutor.execute(context.principal(), read);
+T result = bulkhead.run(() ->              // load shedding (Module 10)
+    tenantExecutor.execute(context.principal(), () -> {   // one tenant-scoped transaction
+        agentPolicy.requireActive(context.principal());   // is this agent approved?
+        T value = read.get();                             // policy + the read
+        auditor.appendAllowed(context, patientId, category);  // MUST succeed, same tx
+        return value;
+    }));
 
-        // 2. MUST succeed BEFORE data leaves. Failure here FAILS the entire request!
-        auditor.allowed(context, patientId, category);
+auditor.logAllowed(context, patientId, category);   // log line and metric, after commit
+return result;
+```
 
-        // 3. Only return data once audit record is durably stored
-        return result;
+The failure handling around it:
 
-    } catch (PatientAccessDeniedException | ClinicalAccessDeniedException ex) {
-        // Denials are best-effort: caller receives nothing anyway
-        auditor.denied(context, patientId, category);
-        throw ex;
-    } catch (AuditUnavailableException ex) {
-        auditor.failed(context, patientId, category);
-        throw ex;
-    }
+```java
+} catch (PatientAccessDeniedException | ClinicalAccessDeniedException | RateLimitExceededException ex) {
+    auditor.denied(context, patientId, category);   // best effort, own transaction
+    throw ex;
+} catch (ServerBusyException ex) {
+    throw ex;                                        // nothing was decided: no audit row
+} catch (AuditUnavailableException ex) {
+    auditor.failed(context, patientId, category);
+    throw ex;
+} catch (RuntimeException ex) {
+    auditor.failed(context, patientId, category);
+    throw new RequestFailedException(ex);            // generic error to the model
 }
 ```
 
-And in [`AccessAuditor.java`](file:///c:/ws/health-mcp-client/src/main/java/io/github/rahulrajsonu/mcpsecurity/service/AccessAuditor.java#L41-L50):
+And in [`AccessAuditor.java`](file:///c:/ws/health-mcp-client/src/main/java/io/github/rahulrajsonu/mcpsecurity/service/AccessAuditor.java):
 
 ```java
-public void allowed(ClinicalAccessContext context, String patientId, DataCategory category) {
+// Runs inside the caller's transaction. A failure aborts the whole call.
+public void appendAllowed(ClinicalAccessContext context, String patientId, DataCategory category) {
     try {
-        store(context, patientId, category, Outcome.ALLOWED);
+        events.append(context.principal().tenantId(), event(context, patientId, category, Outcome.ALLOWED));
     } catch (RuntimeException ex) {
         LOG.error("audit_write_failed outcome=ALLOWED; access refused", ex);
-        // Rethrowing ensures zero clinical data is returned
-        throw new AuditUnavailableException(ex);
+        throw new AuditUnavailableException(ex);   // zero clinical data is returned
     }
+}
+
+// After the commit: the log line and the metric. Never the source of truth.
+public void logAllowed(ClinicalAccessContext context, String patientId, DataCategory category) {
     logger.record(context, patientId, category, Outcome.ALLOWED);
 }
 ```
+
+> [!NOTE]
+> Denied and failed attempts are written in their **own** transaction, best effort: the caller receives nothing either way, and a denial must still be recorded even though the main transaction rolled back. A call refused by load shedding (`server_busy`) writes no row, because no decision was made.
 
 ---
 
@@ -111,11 +125,15 @@ CREATE TABLE access_events (
     outcome VARCHAR(10) NOT NULL,
     break_glass BOOLEAN NOT NULL,
     justification VARCHAR(500),
+    client_id VARCHAR(128),   -- added in V10: which OAuth client (agent) made the call
+    actor VARCHAR(256),       -- added in V11: delegation chain from the token's `act` claim
 
     CONSTRAINT chk_access_event_outcome
         CHECK (outcome IN ('ALLOWED', 'DENIED', 'ERROR'))
 );
 ```
+
+`client_id` and `actor` answer the question the subject alone cannot: *which software* acted for this user, and through whom. `actor` holds the RFC 8693 `act` chain (for example `agent-a>agent-b`), outermost first, capped at five hops. It is **recorded, never trusted**: it grants nothing and is there for investigation. The same two values appear in the audit log line (`client=`, `actor=`).
 
 > [!IMPORTANT]
 > **Why is there no FOREIGN KEY on `patient_id`?**  
@@ -200,12 +218,14 @@ void anAllowedReadIsRefusedWhenTheAuditWriteFails() {
 
     loginAsDoctor();
 
-    // Invoking the tool throws AuditUnavailableException and returns ZERO patient data
-    assertThatThrownBy(() -> patientTools.getPatientSummary("patient-400", null, null))
-            .isInstanceOf(AuditUnavailableException.class)
-            // Asserts error message does NOT leak patient data
-            .hasMessageNotContaining("patient-400")
-            .hasMessageNotContaining("Alice");
+    CallToolResult result = patientTools.getPatientSummary("patient-400", null, null);
+
+    // The tool returns an error result with a generic code and ZERO patient data
+    assertFailed(result, "request_failed");
+    assertThat(text(result))
+            .doesNotContain("patient-400")
+            .doesNotContain("Alice")
+            .doesNotContain("audit store down");   // no internals either
 }
 ```
 

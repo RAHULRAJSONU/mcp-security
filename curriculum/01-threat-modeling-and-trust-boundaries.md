@@ -2,7 +2,7 @@
 
 > **Level:** Foundational | **Estimated Reading Time:** 25 mins  
 > **Prerequisites:** Understanding of REST APIs, basic OAuth 2.0 concepts, and LLM tool calling.  
-> **Navigation:** [⬅️ Curriculum Overview](README.md) | [➡️ Module 02: Transport & Edge Security](02-transport-and-edge-security.md)
+> **Navigation:** [⬅️ Module 00: Start Here](00-start-here.md) | [➡️ Module 02: Transport & Edge Security](02-transport-and-edge-security.md)
 
 ---
 
@@ -51,9 +51,9 @@ When an **autonomous AI agent** calls an API via protocols like **Model Context 
 
 MCP operates using JSON-RPC 2.0 messages across two primary transports:
 1. **Stdio (Standard Input/Output):** The host launches the MCP server as a local child process and talks over standard input/output.
-2. **Streamable HTTP (Server-Sent Events / POST):** The host connects over HTTP/HTTPS to a remote MCP server.
+2. **Streamable HTTP (Server-Sent Events / POST):** The host connects over HTTP/HTTPS to a remote MCP server. It can run **stateful** (a session per client) or **stateless** (every request stands alone).
 
-In this repository, the server is built on **Spring AI MCP Server** over **Streamable HTTP** (see [`McpSecurityApplication.java`](file:///c:/ws/health-mcp-client/src/main/java/io/github/rahulrajsonu/mcpsecurity/McpSecurityApplication.java)):
+In this repository, the server is built on **Spring AI MCP Server** over HTTP, in **stateless** mode by default (`MCP_PROTOCOL=STATELESS`). There is no session to hijack or pin to one instance, and every request is authenticated and authorized on its own. Set `MCP_PROTOCOL=STREAMABLE` only if a tool needs server-to-client messages. The entry point ([`McpSecurityApplication.java`](file:///c:/ws/health-mcp-client/src/main/java/io/github/rahulrajsonu/mcpsecurity/McpSecurityApplication.java)):
 
 ```java
 // Spring AI automatically scans and exposes @McpTool annotated methods
@@ -115,7 +115,9 @@ flowchart TD
 3. **Gate 3: Context Extraction:** Resolves `ClinicalPrincipal` with `tenant_id`, `subject`, and granted scopes (`ClinicalPrincipalResolver.java`).
 4. **Gate 4: Policy Enforcement:** Checks whether caller has the specific scope for the data category AND an active clinician-patient assignment (or valid break-glass justification).
 5. **Gate 5: Database Row-Level Security:** Injects `app.tenant_id` into a local transaction and queries Postgres. Even if application SQL fails, Postgres RLS drops any cross-tenant rows.
-6. **Gate 6: Fail-Closed Audit Logging:** Writes an immutable audit record to `access_events` in the database. If this write fails, **the request fails immediately and zero patient data is returned**.
+6. **Gate 6: Fail-Closed Audit Logging:** Writes an immutable audit record to `access_events` in the database, in the same transaction as the read. If this write fails, **the request fails immediately and zero patient data is returned**.
+
+> **Added since these gates were drawn:** an **agent-registry check** (which OAuth client may act for which user), a **per-agent quota**, and a **load-shedding limit** wrap gates 3–6, and break-glass additionally needs a step-up (`acr`) claim. They answer a threat the six gates do not: the *agent* is itself an actor that must be approved, bounded and attributable. See [Module 10](10-agent-controls-and-resilience.md).
 
 ---
 

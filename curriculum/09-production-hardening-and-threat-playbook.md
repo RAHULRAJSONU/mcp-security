@@ -2,7 +2,7 @@
 
 > **Level:** DevOps, SRE & Incident Response | **Estimated Reading Time:** 25 mins  
 > **Prerequisites:** Modules 01–08, familiarity with Docker, Kubernetes, Prometheus, and Incident Response.  
-> **Navigation:** [⬅️ Module 08: Automated Security Testing Harness](08-automated-security-verification.md) | [📚 Return to Curriculum Overview](README.md)
+> **Navigation:** [⬅️ Module 08: Automated Security Testing Harness](08-automated-security-verification.md) | [➡️ Module 10: Agent Controls & Resilience](10-agent-controls-and-resilience.md)
 
 ---
 
@@ -65,6 +65,21 @@ meters.counter("clinical.patient.access",
 
 These counters are exposed strictly on the internal management port (`:8081/actuator/prometheus`) and ingested by Prometheus.
 
+The full metric set, and the ready-made rules, are in [`docs/observability.md`](../docs/observability.md) and [`ops/prometheus-alerts.yml`](../ops/prometheus-alerts.yml) (13 rules in five groups). Beyond the access counter:
+
+| Metric | Tags | Answers |
+|---|---|---|
+| `mcp_tool_calls_total`, `mcp_tool_duration_seconds` | `tool`, `outcome` | Which tool fails or is slow? |
+| `mcp_agent_denied_total` | `reason` | Unknown, unapproved or expired agents still calling |
+| `mcp_agent_quota_rejected_total` | | A runaway loop or bulk reading |
+| `mcp_ratelimit_rejected_total` | `layer` | Flooding by address or token |
+| `mcp_bulkhead_rejected_total`, `mcp_bulkhead_in_flight` | | Load shedding and headroom |
+| Caffeine cache metrics | `cache` | Hit rate of the agent registry, quota and rate-limit caches |
+
+Two supporting practices make an alert actionable:
+- **Request IDs.** Every request gets an `X-Request-ID` (a supplied one is accepted only if it matches `[A-Za-z0-9._-]{8,64}`, otherwise a fresh one is generated). It is in the log MDC and the response header, so a user's report maps to one log trail.
+- **Tool fingerprints.** At startup each tool logs `mcp_tool_fingerprint name=… sha256=…`. Record them per release: a changed hash means the model is now being told something new about a tool (a tool-poisoning signal).
+
 ### Recommended PromQL Alert Rules
 
 #### Alert 1: Denial Spike (Possible Prompt Injection Loop or Enumeration)
@@ -108,6 +123,19 @@ annotations:
 
 ---
 
+#### Alert 4: Capacity and Load Shedding
+When demand exceeds what the database pool can serve, the server answers `server_busy` quickly instead of queueing until things time out.
+```promql
+alert: LoadSheddingActive
+expr: sum(rate(mcp_bulkhead_rejected_total[5m])) > 0.5
+for: 5m
+labels:
+  severity: warning
+```
+Treat it as a capacity signal, not an attack, unless it coincides with quota rejections from one subject. Remedies and sizing are in [`docs/scaling.md`](../docs/scaling.md).
+
+---
+
 ## 4. Incident Response Playbook for AI Tools
 
 ### Scenario A: Investigating a Break-Glass Emergency Read
@@ -145,15 +173,32 @@ WARN AUDIT.patient-access -- patient_access outcome=ALLOWED subject=dr-ada tenan
    ```
    If IDs belong to other hospitals (`patient-600`) or follow an algorithmic sequence (`patient-100`, `patient-101`), the agent has been compromised by prompt injection or automated scraping.
 3. **Terminate Session:**
+   - If one agent client is the source, suspend it first (Scenario C), which needs no IdP change.
    - Immediately revoke the user's active session in Keycloak / IdP.
    - Block the user's refresh token.
 4. **Assess Blast Radius:** Query `access_events` for any `outcome = 'ALLOWED'` rows associated with that `subject` during the incident window. The immutable audit trail proves conclusively what records were disclosed and what remained protected.
 
 ---
 
+### Scenario C: A Misbehaving or Compromised Agent
+**Trigger:** `UnknownOrUnapprovedAgents`, `AgentQuotaRejections`, or `AccessDenialSpike` pointing at one client.
+
+**Step-by-step Triage:**
+1. **Identify the client and user.** The `agent_denied` lines on logger `AUDIT.agent-access` carry tenant, user and client. In the database, `access_events.client_id` and `actor` show which agent, and through whom, made each call.
+2. **Contain at the registry.** Suspend that (tenant, client, user) row. It takes effect within the registry cache time (5 s by default) and needs no redeploy:
+   ```sql
+   UPDATE agents SET state = 'SUSPENDED'
+    WHERE tenant_id = 'hospital-A' AND client_id = 'suspect-client' AND owner_subject = 'doctor-101';
+   ```
+   Run it as the migration owner, through your change process. The application role can only `SELECT` from `agents`, so a compromised agent cannot approve itself.
+3. **Assess blast radius.** `SELECT … FROM access_events WHERE client_id = 'suspect-client' AND outcome = 'ALLOWED'` lists everything it read.
+4. **Then, if the user's identity is suspect too,** revoke their IdP session as in Scenario B.
+
+---
+
 ## 5. Enterprise Deployment Pre-Flight Checklist
 
-Before connecting this MCP server to a live enterprise database, ensure all 10 items are verified:
+Before connecting this MCP server to a live enterprise database, ensure all 14 items are verified:
 
 - [ ] **1. Business Associate Agreement (BAA):** Confirmed active BAA with the cloud LLM provider (OpenAI, Anthropic, Google) with zero data retention for training.
 - [ ] **2. Agent Host Security:** Claude Desktop, IDE extensions, or agent runners are managed on enterprise-enrolled, encrypted endpoints.
@@ -164,7 +209,11 @@ Before connecting this MCP server to a live enterprise database, ensure all 10 i
 - [ ] **7. Database Least Privilege:** PostgreSQL running with separate migration owner and `healthcare_app` runtime user granted only `SELECT` and `INSERT`.
 - [ ] **8. Row-Level Security Enforced:** Migrations `V4` and `V6` applied with `FORCE ROW LEVEL SECURITY`.
 - [ ] **9. Append-Only Audit Trail:** `access_events` table verified to reject `UPDATE` and `DELETE` queries from application role.
-- [ ] **10. SIEM Alerting Active:** Alerts configured for denial spikes, break-glass usage, and audit store connectivity failures.
+- [ ] **10. SIEM Alerting Active:** Alerts configured for denial spikes, break-glass usage, and audit store connectivity failures (`ops/prometheus-alerts.yml`, validated with `promtool check rules`).
+- [ ] **11. Agent Registry Populated:** Every agent is registered per (tenant, client, user) with an expiry; nothing is approved by default.
+- [ ] **12. Break-Glass Step-Up:** `BREAK_GLASS_ACR` is set, and the IdP issues that `acr` only after a fresh human step-up.
+- [ ] **13. Load Shedding Sized:** `MAX_IN_FLIGHT_CALLS` is about 2× `DB_POOL_SIZE`, and no `concurrency_misconfigured` line appears at startup.
+- [ ] **14. Replicas Accounted For:** Quotas and rate limits are per instance; divided by the replica count or moved to shared storage.
 
 ---
 
@@ -182,4 +231,4 @@ This guide walks you through:
 
 ---
 
-[⬅️ Back to Curriculum Overview](README.md)
+[➡️ Proceed to Module 10: Agent Controls & Resilience](10-agent-controls-and-resilience.md)

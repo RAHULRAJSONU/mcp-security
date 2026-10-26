@@ -2,7 +2,7 @@
 
 [![Java 27](https://img.shields.io/badge/Java-27-orange.svg)](https://openjdk.org/projects/jdk/27/)
 [![Spring Boot 4](https://img.shields.io/badge/Spring%20Boot-4.1.1-green.svg)](https://spring.io/projects/spring-boot)
-[![Model Context Protocol](https://img.shields.io/badge/MCP-Streamable%20HTTP-blue.svg)](https://modelcontextprotocol.io)
+[![Model Context Protocol](https://img.shields.io/badge/MCP-Stateless%20HTTP-blue.svg)](https://modelcontextprotocol.io)
 [![PostgreSQL RLS](https://img.shields.io/badge/PostgreSQL-Row--Level%20Security-336791.svg)](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
 
 A Spring Boot [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets an AI agent read patient records, engineered to demonstrate the **defense-in-depth security controls** required before an autonomous AI tool is permitted near sensitive enterprise data (such as Protected Health Information / PHI under HIPAA).
@@ -20,6 +20,10 @@ This repository includes a step-by-step, incremental course designed to teach se
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │ THE INCREMENTAL LEARNING CURRICULUM                                    │
+├────────────────────────────────────────────────────────────────────────┤
+│ 🚀 Module 00: Start Here (new to MCP or security? begin here)          │
+│    - Guided code tour, run a test, break a control on purpose          │
+│    🔗 [Read Module 00](curriculum/00-start-here.md)                                      │
 ├────────────────────────────────────────────────────────────────────────┤
 │ 📖 Module 01: Threat Modeling & MCP Trust Boundaries                   │
 │    - The AI agent dilemma, OWASP Top 10 for LLMs, and trust boundaries │
@@ -56,6 +60,10 @@ This repository includes a step-by-step, incremental course designed to teach se
 │ 📖 Module 09: Production Hardening, Monitoring & Threat Playbook       │
 │    - Zero-secret config, Prometheus anomaly alerts, incident triage    │
 │    🔗 [Read Module 09](curriculum/09-production-hardening-and-threat-playbook.md)      │
+├────────────────────────────────────────────────────────────────────────┤
+│ 📖 Module 10: Agent Controls, Safe Errors & Resilience                 │
+│    - Agent registry, step-up break-glass, quotas, load shedding        │
+│    🔗 [Read Module 10](curriculum/10-agent-controls-and-resilience.md)                    │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -82,7 +90,7 @@ Returning PHI to an AI agent is **not safe by default**. Tool responses are tran
 
 ## 🏛️ Architecture & Verification Gates
 
-Every tool call processed by this server must pass **six distinct verification gates** across a single database transaction:
+Every tool call processed by this server must pass **six distinct verification gates** across a single database transaction. Around those gates sit the agent-registry check, the per-agent quota and the load-shedding limit (see [Agent Controls, Resilience & Operations](#-agent-controls-resilience--operations)). The diagrams predate those additions.
 
 ![Architecture and trust boundaries](docs/architecture.png)
 
@@ -114,7 +122,7 @@ Every tool call processed by this server must pass **six distinct verification g
 
 ## 🧰 The Model Context Protocol (MCP) Tools
 
-Tools are exposed via Streamable HTTP under `/mcp` using Spring AI MCP Server:
+Tools are exposed over HTTP under `/mcp` using Spring AI MCP Server. The protocol is **stateless** by default (`MCP_PROTOCOL=STATELESS`), so any replica can answer any call. Set `MCP_PROTOCOL=STREAMABLE` only if a tool needs server-to-client messages. Every tool returns an `McpSchema.CallToolResult`.
 
 | Tool Name | Scopes Required | Capabilities & Policy Constraints |
 |---|---|---|
@@ -124,6 +132,50 @@ Tools are exposed via Streamable HTTP under `/mcp` using Spring AI MCP Server:
 | `getClinicalNotes(patientId, purpose?, justification?)` | `patient.read`, `notes.read` | Category-specific scope. **Break-glass is strictly refused** even if held by caller. |
 | `getAccessHistory(patientId, limit?)` | `audit.read` | Compliance officer tool. Isolated by tenant. Reading the audit log is itself audited. |
 | `listBreakGlassEvents(limit?)` | `audit.read` | Compliance officer tool. Lists emergency reads with stated clinical justifications. |
+
+### Error contract
+
+Failures come back as `CallToolResult` with `isError=true` and a sanitized JSON body `{error, message, retryable}`. No stack traces or internals are returned.
+
+| `error` | Meaning | `retryable` |
+|---|---|---|
+| `access_denied` | Policy, tenant, agent-registry or step-up refusal. Cross-tenant refusals are indistinguishable from "not found". | no |
+| `unauthenticated` | Missing or invalid identity. | no |
+| `rate_limited` | Per-agent quota exceeded. | yes |
+| `server_busy` | Load shedding. Nothing was decided, read or audited. | yes |
+| `request_failed` | Unexpected failure, including an unavailable audit store (fail-closed). | yes |
+
+Clinical notes are wrapped with an "UNTRUSTED CONTENT" notice, because free text can carry prompt injection.
+
+---
+
+## 🤖 Agent Controls, Resilience & Operations
+
+Beyond user authorization, the server controls **which agent** may act for a user, how much it may do, and how it behaves under load.
+
+| Capability | What it does | Details |
+|---|---|---|
+| **Agent registry** | An OAuth client (`azp`) may act for a user only if registered for that (tenant, client, user) as `APPROVED` and unexpired. Denials: `no_client`, `unknown`, `not_approved`, `expired`. Lookups are cached for 5 s, so a suspension takes effect within seconds. | [docs/agent-registry.md](docs/agent-registry.md) |
+| **Break-glass step-up** | Purpose and justification are model-supplied arguments, so the token must also carry an `acr` equal to `BREAK_GLASS_ACR` (prod default `urn:healthcare:acr:step-up`; blank disables it). | [docs/agent-registry.md](docs/agent-registry.md) |
+| **Agent quota** | Per (tenant, subject, client) calls per minute and per day (Bucket4j + Caffeine) → `rate_limited`. | `app.security.agent.*` |
+| **Load shedding** | At most `MAX_IN_FLIGHT_CALLS` (default 20) calls run or wait for a connection. Excess calls get `server_busy` within `MAX_IN_FLIGHT_WAIT` (default 0.5 s). Keep the limit at about 2× `DB_POOL_SIZE`. | [docs/scaling.md](docs/scaling.md) |
+| **Single-transaction audit** | The agent check, the read and the ALLOWED audit row commit together, so "no audit, no data" is atomic. Denied and failed calls get a best-effort audit row. | [docs/scaling.md](docs/scaling.md) |
+| **Actor chain** | The RFC 8693 `act` chain (for example `agent-a>agent-b`) is recorded, up to 5 hops, in `access_events.actor`. It is recorded only and grants nothing. | [docs/agent-registry.md](docs/agent-registry.md) |
+| **Virtual threads** | `spring.threads.virtual.enabled=true`: waiting on the database is cheap. The database pool is the real capacity limit. | [docs/scaling.md](docs/scaling.md) |
+| **Observability** | Prometheus metrics on the management port (tool calls and latency, agent denials, quota, rate limit, bulkhead, Caffeine caches), `X-Request-ID` correlation, ECS JSON logs in `prod`, tool fingerprints logged at startup, and 13 alert rules. | [docs/observability.md](docs/observability.md), [ops/prometheus-alerts.yml](ops/prometheus-alerts.yml) |
+
+Quotas and rate limits are **per instance**. With N replicas, divide the limits by N or move the counters to shared storage.
+
+### Key configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MCP_PROTOCOL` | `STATELESS` | `STATELESS` or `STREAMABLE` |
+| `BREAK_GLASS_ACR` | blank (prod: `urn:healthcare:acr:step-up`) | Required `acr` for emergency access |
+| `MAX_IN_FLIGHT_CALLS` | `20` | Load-shedding limit |
+| `MAX_IN_FLIGHT_WAIT` | `PT0.5S` | How long a call waits for a place before `server_busy` |
+| `DB_POOL_SIZE` | `10` | Database pool; sizes the limit above |
+| `JWT_MAX_LIFETIME` | 15 minutes | Maximum accepted token lifetime |
 
 ---
 
@@ -156,7 +208,7 @@ Follow the hands-on tutorial to connect Claude Desktop to a real Keycloak instan
 
 ## 🧪 Automated Testing & Verification
 
-Integration tests leverage Testcontainers to spin up isolated PostgreSQL instances and assert database-level security policies:
+Integration tests leverage Testcontainers to spin up isolated PostgreSQL instances and assert database-level security policies. They also cover the agent registry, quotas, load shedding, the stateless HTTP transport and concurrency: 900 overlapping cross-tenant requests on 10 pooled connections, and exactly one audit row per allowed call.
 
 ```bash
 # Run all unit tests
@@ -181,6 +233,10 @@ IT_DB_APP_PASSWORD=secret \
 
 - [Multi-Page Learning Curriculum](curriculum/README.md)
 - [PHI & PII Handling Guide](docs/phi-handling.md)
+- [Agent Registry](docs/agent-registry.md)
+- [Observability: metrics, logs, request IDs](docs/observability.md)
+- [Concurrency & Scaling](docs/scaling.md)
+- [Prometheus alert rules](ops/prometheus-alerts.yml)
 - [Cloud-IAM & Claude Desktop Integration Guide](docs/cloud-iam-guide.md)
 - [Architecture Diagram Source](docs/architecture.svg)
 - [Security Flow Diagram Source](docs/security-flow.svg)

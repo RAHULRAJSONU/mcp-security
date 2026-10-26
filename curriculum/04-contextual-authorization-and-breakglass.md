@@ -86,7 +86,9 @@ In emergency medicine, strict assignment checks can be lethal. If an unconscious
 
 **Break-Glass** allows emergency access while preserving auditability and compliance.
 
-### The Six Break-Glass Constraints
+> **Who chooses `purpose`?** In this server `purpose` and `justification` are tool arguments, and a tool argument is chosen by the *model*. A prompt-injected agent can therefore type `EMERGENCY` and a plausible sentence. The scope check alone is not enough, which is why constraint 7 below ties emergency access to a fresh human step-up carried in the token.
+
+### The Seven Break-Glass Constraints
 Under [`PatientAccessPolicy.java`](file:///c:/ws/health-mcp-client/src/main/java/io/github/rahulrajsonu/mcpsecurity/security/PatientAccessPolicy.java#L51-L56) and [`requireBreakGlass`](file:///c:/ws/health-mcp-client/src/main/java/io/github/rahulrajsonu/mcpsecurity/security/PatientAccessPolicy.java#L97-L114):
 
 1. **Explicit Scope Required:** The token must carry the dedicated `patient.break_glass` scope.
@@ -100,6 +102,15 @@ Under [`PatientAccessPolicy.java`](file:///c:/ws/health-mcp-client/src/main/java
    *Why? Progress notes contain subjective narratives and psychiatric notes that are rarely required for acute resuscitation.*
 5. **Elevated Logging:** Emitted at `WARN` level to a dedicated audit log and incremented on Prometheus metric counters.
 6. **Zero Tenant Crossing:** Break-glass **never** bypasses tenant isolation. A doctor at Hospital A can break glass on unassigned patients in Hospital A, but never on patients in Hospital B.
+7. **Human Step-Up (`acr`):** When `app.security.break-glass.required-acr` is set (`BREAK_GLASS_ACR`; the `prod` default is `urn:healthcare:acr:step-up`), the token must carry an `acr` claim equal to it. Configure the identity provider to issue that `acr` only after a fresh human step-up such as MFA. A blank value disables the check (local development only). If the IdP never issues it, break-glass is simply unavailable, which is the safe failure.
+
+   ```java
+   // PatientAccessPolicy.requireBreakGlass (shape)
+   String required = breakGlass.requiredAcr();
+   if (!required.isBlank() && !required.equals(principal.authContext())) {
+       throw new PatientAccessDeniedException();   // same indistinguishable refusal
+   }
+   ```
 
 ---
 
@@ -168,6 +179,13 @@ Look at the test assertions:
 - Verify that a 14-character justification fails (`MIN_JUSTIFICATION_CHARS = 15`).
 - Verify that a 501-character justification fails (`MAX_JUSTIFICATION_CHARS = 500`).
 - Verify that emergency access for `CLINICAL_NOTES` always throws `PatientAccessDeniedException`.
+- Verify that, with a required `acr` configured, a token without the matching `acr` is refused for `EMERGENCY` but still works for `TREATMENT`.
+
+---
+
+## 8. What Scopes Cannot Tell You: Which Agent?
+
+Scopes and assignments describe what the *user* may do. They say nothing about *which software* is acting for them. Module 10 adds that layer: an agent registry keyed on (tenant, client, user), a per-agent quota, and an audit trail that records the client and any delegation chain.
 
 ---
 

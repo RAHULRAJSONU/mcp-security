@@ -31,6 +31,9 @@ This repository organizes automated verification into **four distinct testing ti
 │ TIER 4: END-TO-END RESILIENCE & PRIVACY LEAK TESTS                     │
 │  - PhiLogLeakIT: Captures root DEBUG logs; asserts 0 PHI leaks         │
 │  - ClinicalToolsEndToEndIT: Full matrix of scopes, assignments & tools │
+│  - AgentRegistryIT / AgentQuotaIT / ToolGuardrailsIT: agent controls   │
+│  - McpHttpIT: stateless MCP over real HTTP, request IDs, Prometheus    │
+│  - ConcurrencyIT / LoadSheddingIT: isolation and audit under load      │
 ├────────────────────────────────────────────────────────────────────────┤
 │ TIER 3: DATABASE KERNEL & ACCESS-CONTROL TESTS                         │
 │  - AppendOnlyAuditIT: Asserts DB rejects UPDATE/DELETE on audit table  │
@@ -69,7 +72,7 @@ To test database permissions and RLS reliably without requiring developers to ma
        registry.add("spring.flyway.password", container::getPassword);
    }
    ```
-4. **Flyway Execution:** Flyway runs migrations `V1` through `V7`, applying RLS policies, table structures, and synthetic seed data.
+4. **Flyway Execution:** Flyway runs every migration (`db/migration`, including the agent registry and the audit `client_id`/`actor` columns) plus the synthetic seed data (`db/seed`, local and test only), applying RLS policies and table structures.
 5. **Least-Privilege Execution:** The Spring application datasource connects **strictly as `healthcare_app`**, ensuring all application queries run under least-privilege database constraints.
 
 ---
@@ -206,6 +209,22 @@ Observe how:
 1. `AbstractPostgresIT` launches PostgreSQL via Testcontainers.
 2. Flyway applies the RLS migrations.
 3. Every test simulates a specific attack vector (log injection, cross-tenant leak, audit tampering) and asserts that the defense-in-depth gate successfully neutralizes it.
+
+### Testing Under Concurrency
+
+Row-level security depends on a per-transaction setting on a **pooled** connection, so the real question is whether anything leaks from one request into the next when many run at once. [`ConcurrencyIT`](../src/test/java/io/github/rahulrajsonu/mcpsecurity/ConcurrencyIT.java) releases hundreds of virtual threads together against a pool of only 10 connections:
+
+- 900 overlapping requests across two tenants: every roster matches its own tenant, and every cross-tenant read is refused.
+- 300 parallel allowed reads leave **exactly 300** audit rows, none lost and none doubled.
+- 1,500 simultaneous calls complete without errors.
+
+Two techniques make such tests trustworthy:
+1. **A latch releases all tasks at once**, so they truly overlap instead of running one after another.
+2. **Deterministic overload**: [`LoadSheddingIT`](../src/test/java/io/github/rahulrajsonu/mcpsecurity/LoadSheddingIT.java) holds both places of a two-place limit, then asserts the next call gets `server_busy`, writes no audit row, and the server recovers after release. It never relies on timing.
+
+A lesson from this suite: the first version set the in-flight limit far above the pool size, and calls timed out waiting for a connection before the limit refused anything. The test exposed a real misconfiguration, which is now caught at startup (see Module 10).
+
+> **Stale classes can hide compile errors.** If a test change seems to pass too easily, delete `target/classes` and `target/test-classes` and rebuild. On Windows, stop any running jar first, because it locks `target/*.jar` and `repackage` fails.
 
 ---
 
